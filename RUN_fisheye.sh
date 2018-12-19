@@ -52,7 +52,6 @@ echo "-------------------------------------------------"
 echo "Stitching: $IN_DIR/${filein_prefix}${FR_START}:${FR_END}.jpg "
 echo "-------------------------------------------------"
 ./fisheyeStitcher --in_dir $IN_DIR --in $filein_prefix --out_dir $OUT_DIR --fr $FR_START $FR_END
-# or quick run:  ./fisheyeStitcher --in_dir $IN_DIR --in 360_0546_SRA_ --out_dir $OUT_DIR --fr 1085 1145
 echo "finish stitching!"
 echo ""
 
@@ -65,17 +64,36 @@ echo "-------------------------------------------------"
 echo "Generating video: ${VIDEO_DIR}/${fileout_}"
 echo "-------------------------------------------------"
 #---- combine frames
-ffmpeg -r 29 -f image2 -s $RESO -start_number $FR_START  -i ${OUT_DIR}/pano_360_0546_SRA_%04d.jpg -vcodec libx264 -crf 25 -pix_fmt yuv420p  ${VIDEO_DIR}/${fileout_} 
-echo "-------------------------------------------------"
-echo "Output stitched video:  ${VIDEO_DIR}/${fileout_} "
-echo "-------------------------------------------------"
-echo ""
+ffmpeg -loglevel error -r 29 -f image2 -s $RESO -start_number $FR_START  -i ${OUT_DIR}/pano_360_0546_SRA_%04d.jpg -vcodec libx264 -crf 25 -pix_fmt yuv420p  ${VIDEO_DIR}/${fileout_} 
 
 
-#---- play stiched video
+filein_='360_0546_SRA.mp4'
+if [ ! -f ${VIDEO_DIR}/${filein_} ]; then
+    echo "-------------------------------------------------"
+    echo "Generating video: ${VIDEO_DIR}/${filein_} (original video)"
+    echo "-------------------------------------------------"
+    # Generate video from original images
+    ffmpeg -loglevel error -y -r 29 -f image2 -s $RESO -start_number $FR_START  -i ${IN_DIR}/360_0546_SRA_%04d.jpg -vcodec libx264 -crf 25 -pix_fmt yuv420p  ${VIDEO_DIR}/${filein_} 
+else
+    echo "Skip generating original video (already exists!)"
+fi
+
+
 echo "-------------------------------------------------"
-echo "Playing:  ${VIDEO_DIR}/${fileout_} "
+echo "Generating vert-stacked video"
+echo "-------------------------------------------------"
+
+ffmpeg \
+  -y \
+  -i ${VIDEO_DIR}/${filein_} \
+  -i ${VIDEO_DIR}/${fileout_} \
+  -filter_complex vstack=inputs=2 \
+  -loglevel warning \
+  ${VIDEO_DIR}/output_vstack.mp4
+
+echo "-------------------------------------------------"
+echo "Playing: original vs stitched"
 echo "-------------------------------------------------"
 if [ $playback_enb -eq 1 ]; then
-    ffplay  ${VIDEO_DIR}/${fileout_}
+    ffplay -loglevel error -loop 10  ${VIDEO_DIR}/output_vstack.mp4
 fi
