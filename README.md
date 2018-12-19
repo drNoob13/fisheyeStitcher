@@ -12,21 +12,26 @@ If you find our code useful, please consider citing our following papers:
 ```
 
 ## Installation
+
 The code is built in Ubuntu 18.04 LTS (but should work fine under Ubuntu 16.04 LTS as well).
+
 ### Pre-requiste
+
 * OpenCV 3.4.2 (with calib3d), which I built from source.
 * ffmpeg `sudo apt-get install ffmpeg`, which is used to combined stitched frames and playback.
 * cmake ``.
-### Build
-*. Clone the repo and go to the cloned repo.
 
-*. Build the code
+### Build
+
+* Clone the repo and go to the cloned repo.
+
+* Build the code
 ```
 cmake .
 make
 ```
 
-*. Run the code with provided sample images
+* Run the code with provided sample images
 ```
 ./RUN_fisheye.sh
 ```
@@ -34,6 +39,7 @@ make
 Please be informed that the code doesn't include the temporal coherence control, but one can implement it using the description in [1].
 
 
-** Performance
+## Performance
+
 It takes around 70ms-90ms to stitch one 3840x1920 image (02 x fisheye images) from Gear360 C200 on a laptop with an Intel i7-8750H CPU + 32GB Memory. See [clip](https://www.youtube.com/watch?v=u90ewqR_fHg&feature=youtu.be).
 
