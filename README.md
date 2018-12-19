@@ -17,9 +17,9 @@ The code is built in Ubuntu 18.04 LTS (but should work fine under Ubuntu 16.04 L
 
 ### Pre-requiste
 
-* OpenCV 3.4.2 (with calib3d), which I built from source.
-* ffmpeg `sudo apt-get install ffmpeg`, which is used to combined stitched frames and playback.
-* cmake ``.
+* OpenCV 3.4.2 (with calib3d), which is built from source.
+* ffmpeg (`sudo apt-get install ffmpeg`), which is used to combined stitched frames and playback.
+* cmake.
 
 ### Build
 
