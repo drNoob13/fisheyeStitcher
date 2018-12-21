@@ -40,7 +40,7 @@ It takes around 70ms-90ms to stitch one 3840x1920 image (02 x fisheye images) fr
 
 If you find our code useful, please consider citing our following papers:
 
-```
-[1]  T. Ho, I. D. Schizas, K. R. Rao and M. Budagavi, "360-degree video stitching for dual-fisheye lens cameras based on rigid moving least squares," 2017 IEEE International Conference on Image Processing (ICIP), Beijing, China, Sept. 2017, pp. 51-55.
-[2]  T. Ho and M. Budagavi, "Dual-fisheye lens stitching for 360-degree imaging," 2017 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP), New Orleans, LA, Mar. 2017, pp. 2172-2176.
-```
+`[1]`  T. Ho, I. D. Schizas, K. R. Rao and M. Budagavi, "360-degree video stitching for dual-fisheye lens cameras based on rigid moving least squares," 2017 IEEE International Conference on Image Processing (ICIP), Beijing, China, Sept. 2017, pp. 51-55.
+
+`[2]`  T. Ho and M. Budagavi, "Dual-fisheye lens stitching for 360-degree imaging," 2017 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP), New Orleans, LA, Mar. 2017, pp. 2172-2176.
+
