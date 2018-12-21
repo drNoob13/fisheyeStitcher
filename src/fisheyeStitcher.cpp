@@ -1,16 +1,16 @@
-/**********************************************************************************************
+/***************************************************************************************************
 *
-* Author  : Tuan Ho (hpmtuan@gmail.com)
-* Source  : https://github.com/drNoob13/fisheyeStitcher
+* Author  : Tuan Ho (drnoob2013@gmail.com)
 * Function: 360-degree Video Stitcher for Dual-fisheye Lens Camera
-* Support : Samsung Gear360 2016-model (C200).
+* Support : Samsung Gear360 2016-model (C200)
+* Source  : https://github.com/drNoob13/fisheyeStitcher
 *
 * Note: if you find the code useful, please cite the following papers:
-*       [1]  T. Ho, I. D. Schizas, K. R. Rao and M. Budagavi, "360-degree video stitching for 
-*            dual-fisheye lens cameras based on rigid moving least squares," ICIP 2017.
-*       [2]  T. Ho and M. Budagavi, "Dual-fisheye lens stitching for 360-degree imaging," ICASSP 2017.
+*   [1]  T. Ho, I. D. Schizas, K. R. Rao and M. Budagavi, "360-degree video stitching for 
+*        dual-fisheye lens cameras based on rigid moving least squares," ICIP 2017.
+*   [2]  T. Ho and M. Budagavi, "Dual-fisheye lens stitching for 360-degree imaging," ICASSP 2017.
 *
-**********************************************************************************************/
+***************************************************************************************************/
 
 #include <iostream>
 #include <fstream>
@@ -30,7 +30,7 @@ using namespace std;
 #   define    _MY_DEBUG_     0
 #endif
 
-#ifndef _PROFILEING_
+#ifndef _PROFILING_
 #   define    _PROFILING_    0
 #endif
 
@@ -43,34 +43,33 @@ using namespace std;
 #define    P6_     0.9976
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Fisheye Unwarping
 *   Unwarp source fisheye -> 360x180 equirectangular
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_unwarp( const cv::Mat &map_x, const cv::Mat &map_y, const cv::Mat &src, cv::Mat &dst )
 {
     remap(src, dst, map_x, map_y, INTER_LINEAR, BORDER_CONSTANT, Scalar(0, 0, 0));
-
 } /* fish_unwarp() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Function: convert fisheye-vertical to equirectangular 
 *   (reference: Panotool)
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish2Eqt( double x_dest, double  y_dest, double* x_src, double* y_src, double W_rad )
 {
     double phi, theta, r, s;
     double v[3];
-
-    phi = x_dest / W_rad;
+    phi   = x_dest / W_rad;
     theta = -y_dest / W_rad + CV_PI / 2;
+
     if (theta < 0)
     {
         theta = -theta;
@@ -83,34 +82,28 @@ fish2Eqt( double x_dest, double  y_dest, double* x_src, double* y_src, double W_
     }
 
     s = sin(theta);
-    v[0] = s * sin(phi); //  y' -> x
-    v[1] = cos(theta);   //  z' -> y
-
+    v[0] = s * sin(phi);
+    v[1] = cos(theta);
     r = sqrt(v[1] * v[1] + v[0] * v[0]);
-
     theta = W_rad * atan2(r, s * cos(phi));
-
+    //
     *x_src = theta * v[0] / r;
     *y_src = theta * v[1] / r;
 
 } /* fish2Eqt() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Map 2D fisheye image to 2D projected sphere
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_2D_map( cv::Mat &map_x, cv::Mat &map_y, int Hs, int Ws, int Hd, int Wd, float in_fovd )
 {
-
-
     static double W_rad = Wd / (2 * CV_PI);
-
     double x_d, y_d; // dest
     double x_s, y_s; // source
-
     double w2  = (double)Wd / 2.0 - 0.5;
     double h2  = (double)Hd / 2.0 - 0.5;
     double ws2 = (double)Ws / 2.0 - 0.5;
@@ -137,11 +130,11 @@ fish_2D_map( cv::Mat &map_x, cv::Mat &map_y, int Hs, int Ws, int Hd, int Wd, flo
 } /* fish_2D_map() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Mask creation for cropping image data inside the FOVD circle
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_mask_erect( int Ws, int Hs, float in_fovd, cv::Mat &cir_mask )
 {
@@ -154,24 +147,23 @@ fish_mask_erect( int Ws, int Hs, float in_fovd, cv::Mat &cir_mask )
 } /* fish_mask_erect() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Rigid Moving Least Squares Interpolation
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_rmls_deform( const cv::Mat &map_x, const cv::Mat &map_y, const cv::Mat &src, cv::Mat &dst )
 {
     remap(src, dst, map_x, map_y, INTER_LINEAR, BORDER_CONSTANT, Scalar(0, 0, 0));
-
 } /* fish_rmls_interp2() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Fisheye Light Fall-off Compensation: Scale_Map Construction
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_compen_map( const int H, const int W, const cv::Mat &R_pf, cv::Mat &scale_map )
 {
@@ -180,7 +172,6 @@ fish_compen_map( const int H, const int W, const cv::Mat &R_pf, cv::Mat &scale_m
 
     // Create IV quadrant map
     Mat scale_map_quad_4 = Mat::zeros(H_, W_, R_pf.type());
-
     float da = R_pf.at<float>(0, W_ - 1);
     int x, y;
     float r, a, b;
@@ -210,25 +201,25 @@ fish_compen_map( const int H, const int W, const cv::Mat &R_pf, cv::Mat &scale_m
     Mat scale_map_quad_1(scale_map_quad_4.size(), scale_map_quad_4.type());
     Mat scale_map_quad_2(scale_map_quad_4.size(), scale_map_quad_4.type());
     Mat scale_map_quad_3(scale_map_quad_4.size(), scale_map_quad_4.type());
-
+    // 
     cv::flip(scale_map_quad_4, scale_map_quad_1, 0); // quad I, up-down or around x-axis
     cv::flip(scale_map_quad_4, scale_map_quad_3, 1); // quad III, left-right or around y-axis
     cv::flip(scale_map_quad_1, scale_map_quad_2, 1); // quad II, up-down or around x-axis
-
+    // 
     Mat quad_21, quad_34;
     cv::hconcat(scale_map_quad_2, scale_map_quad_1, quad_21);
     cv::hconcat(scale_map_quad_3, scale_map_quad_4, quad_34);
-
+    // 
     cv::vconcat(quad_21, quad_34, scale_map);
 
 } /* fisheye_compen_map() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Fisheye Light Fall-off Compensation
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_lighFO_compen( cv::Mat out_img, cv::Mat &in_img, const cv::Mat &scale_map )
 {
@@ -250,36 +241,27 @@ fish_lighFO_compen( cv::Mat out_img, cv::Mat &in_img, const cv::Mat &scale_map )
 } /* fish_lighFO_compen() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Common Preparation
 *    Output:   map_x, map_y(unwarping)
 *              cir_mask(circular crop)
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_common_init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, cv::Mat &scale_map, cv::Mat &mls_map_x, 
                   cv::Mat &mls_map_y, int Hs, const int Ws, const int Hd, const int Wd, const float fovd )
 {
-    //**************************************************************************
     // Unwarp map_x, map_y, cir_mask
-    //**************************************************************************
     fish_2D_map(map_x, map_y, Hs, Ws, Hd, Wd, fovd);
 
-
-    //**************************************************************************
     // Create Circular mask to Crop the input W.R.T FOVD (mask all data outside the FOVD circle)
-    //**************************************************************************
     fish_mask_erect(Ws, Hs, fovd, cir_mask);
 
-
-    //**************************************************************************
     // Scale_Map Reconstruction for Fisheye Light Fall-off Compensation
-    //**************************************************************************
     int H = Hs;
     int W = Ws;
     int W_ = W / 2;
-
     Mat x_coor = Mat::zeros(1, W_, CV_32F);
     Mat temp(x_coor.size(), x_coor.type());
 
@@ -290,7 +272,6 @@ fish_common_init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, cv::Mat &sc
 
     //  R_pf = P1_ * (x_coor.^5.0) + P2_ * (x_coor.^4.0) + P3_ * (x_coor.^3.0) + 
     //         P4_ * (x_coor.^2.0) + P5_ * x_coor + P6_;
-
     Mat R_pf = Mat::zeros(x_coor.size(), x_coor.type());
     cv::pow(x_coor, 5.0, temp);
     R_pf = R_pf + P1_ * temp;
@@ -308,11 +289,8 @@ fish_common_init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, cv::Mat &sc
     // Generate Scale Map
     fish_compen_map(H, W, R_pf, scale_map);
 
-
-    //**************************************************************************
     // Rigid MLS Interp2 grids
-    //**************************************************************************
-    //3840x1920 resolution (video)
+    //3840x1920 resolution (C200 video)
     cv::FileStorage fs("./utils/grid_xd_yd_3840x1920.yml.gz", FileStorage::READ);
     fs["Xd"] >> mls_map_x;
     fs["Yd"] >> mls_map_y;
@@ -321,19 +299,18 @@ fish_common_init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, cv::Mat &sc
 } /* fish_common_init() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Adaptive Alignment: Norm XCorr
 *    Input: Ref and Template images
 *    Output: matchLoc (matching location)
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_norm_xcorr( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const char* img_window, 
                 bool disableDisplay )
 {
     double tickStart, tickEnd, runTime;
-
     Mat img = Ref;
     Mat templ = Tmpl;
     Mat img_display, result;
@@ -347,7 +324,6 @@ fish_norm_xcorr( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const
 
     // Match template
     matchTemplate(img, templ, result, match_method);
-
     normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
 
     // Check for peak cross-correlation
@@ -367,7 +343,8 @@ fish_norm_xcorr( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const
 
     if (!disableDisplay)
     {
-        rectangle(img_display, matchLoc, Point(matchLoc.x + templ.cols, matchLoc.y + templ.rows), Scalar(0, 255, 0), 2, 8, 0);
+        rectangle(img_display, matchLoc, Point(matchLoc.x + templ.cols, matchLoc.y + templ.rows), 
+                  Scalar(0, 255, 0), 2, 8, 0);
         Mat RefTemplCat;
         cv::hconcat(img_display, Tmpl, RefTemplCat);
         imshow(img_window, RefTemplCat);
@@ -376,19 +353,18 @@ fish_norm_xcorr( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const
 } /* fish_norm_xcorr() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Construct Control Points for Affine2D estimation
 *    Input: Matched Points in the template & ref
 *    Output: movingPoints & fixedPoints
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_ctrl_points_construct( vector<Point2f> &movingPoints, vector<Point2f> &fixedPoints, 
             const cv::Point2f &matchLocLeft, const cv::Point2f &matchLocRight, const int row_start, 
             const int row_end, const int p_wid, const int p_x1, const int p_x2, const int p_x2_ref )
 {
-
     float x1 = matchLocLeft.x;
     float y1 = matchLocLeft.y;
     float x2 = matchLocRight.x;
@@ -425,11 +401,11 @@ fish_ctrl_points_construct( vector<Point2f> &movingPoints, vector<Point2f> &fixe
 } /* fish_ref_point_construct() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Ramp Blending on the right patch
 *
-********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_blend_right( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
 {
@@ -440,11 +416,11 @@ fish_blend_right( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
     Mat bg1_, bg2_;
     bg1.convertTo(bg1_, CV_32F);
     bg2.convertTo(bg2_, CV_32F);
-
+    //
     Mat bgr_bg[3], bgr_bg1[3], bgr_bg2[3];   //destination array
     split(bg1_, bgr_bg1); //split source  
     split(bg2_, bgr_bg2); //split source  
-
+    // 
     bgr_bg[0] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
     bgr_bg[1] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
     bgr_bg[2] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
@@ -466,11 +442,11 @@ fish_blend_right( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
 } /* fish_blend_right() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Ramp Blending on the left patch
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_blend_left( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
 {
@@ -481,11 +457,11 @@ fish_blend_left( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
     Mat bg1_, bg2_;
     bg1.convertTo(bg1_, CV_32F);
     bg2.convertTo(bg2_, CV_32F);
-
+    // 
     Mat bgr_bg[3], bgr_bg1[3], bgr_bg2[3];   //destination array
     split(bg1_, bgr_bg1); //split source  
     split(bg2_, bgr_bg2); //split source  
-
+    // 
     bgr_bg[0] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
     bgr_bg[1] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
     bgr_bg[2] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
@@ -507,13 +483,13 @@ fish_blend_left( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
 } /* fish_blend_left() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Blending aligned images
 *    Input: aligned images
 *    Output: blended pano
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 void 
 fish_blend( cv::Mat &left_img, cv::Mat &right_img_aligned, cv::Mat &pano )
 {
@@ -525,7 +501,6 @@ fish_blend( cv::Mat &left_img, cv::Mat &right_img_aligned, cv::Mat &pano )
 
     // Mask
     Mat mask = imread("./utils/mask_1920x1920_fovd_187.jpg", IMREAD_COLOR);
-
     int H = mask.size().height;
     int W = mask.size().width;
 
@@ -533,37 +508,29 @@ fish_blend( cv::Mat &left_img, cv::Mat &right_img_aligned, cv::Mat &pano )
     int imH = left_img.size().height;
     int imW = left_img.size().width;
     Mat left_img_cr = left_img(Rect(imW / 2 + 1 - Worg / 2, 0, Worg, imH));
-
     int  sideW = 45;
-
     Mat left_blend, right_blend;
 
     for (int r = 0; r < H; r++)
     {
         int p = post.at<float>(r, 0);
-
         if (p == 0)
         {
             continue;
         }
-
         // Left boundary
         Mat lf_win_1 = left_img_cr(Rect(p - sideW, r, 2 * sideW, 1));
         Mat rt_win_1 = right_img_aligned(Rect(p - sideW, r, 2 * sideW, 1));
-
         // Right boundary
         Mat lf_win_2 = left_img_cr(Rect((W - p - sideW), r, 2 * sideW, 1));
         Mat rt_win_2 = right_img_aligned(Rect((W - p - sideW), r, 2 * sideW, 1));
-
         // Blend(ramp)
         Mat bleft, bright;
         fish_blend_left(bleft, lf_win_1, rt_win_1);
         fish_blend_right(bright, lf_win_2, rt_win_2);
-
         // Update left boundary
         bleft.copyTo(lf_win_1);
         bleft.copyTo(rt_win_1);
-
         // Update right boundary
         bright.copyTo(lf_win_2);
         bright.copyTo(rt_win_2);
@@ -578,21 +545,18 @@ fish_blend( cv::Mat &left_img, cv::Mat &right_img_aligned, cv::Mat &pano )
     Mat mask_ = mask(Rect(0, 0, mask.size().width, mask.size().height - 2));
     Mat mask_n;
     bitwise_not(mask_, mask_n);
-
     bitwise_and(left_img_cr, mask_, left_img_cr); // Left image
-
+    // 
     Mat temp1 = left_img(Rect(0, 0, (imW / 2 - Worg / 2), imH));
     Mat temp2 = left_img(Rect((imW / 2 + Worg / 2), 0, (imW / 2 - Worg / 2), imH));
     Mat t;
     cv::hconcat(temp1, left_img_cr, t);
     cv::hconcat(t, temp2, left_img);
-
+    // 
     bitwise_and(right_img_aligned, mask_n, right_img_aligned); // Right image
-
+    //
     pano = left_img;
-
     Mat temp = pano(Rect((imW / 2 - Worg / 2), 0, Worg, imH));
-
     Mat t2;
     bitwise_or(temp, right_img_aligned, t2);
     t2.copyTo(temp); // updated pano
@@ -600,11 +564,11 @@ fish_blend( cv::Mat &left_img, cv::Mat &right_img_aligned, cv::Mat &pano )
 } /* fish_blend() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Single frame stitch
 *
-*********************************************************************************************************/
+****************************************************************************************************/
 void 
 fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::Mat &cir_mask, 
         cv::Mat &scale_map, const cv::Mat &map_x, const cv::Mat &map_y, const cv::Mat &mls_map_x, 
@@ -618,9 +582,9 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     tickStart = double(getTickCount());
 #endif
 
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     // Circular Crop
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     bitwise_and(in_img_L, cir_mask, in_img_L); // Left image
     bitwise_and(in_img_R, cir_mask, in_img_R); // Right image
 
@@ -631,9 +595,9 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     std::cout << "run-time (Crop) = " << runTime << " (sec)" << "\n";
 #endif
 
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     // Light Fall-off Compensation
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     Mat left_img_compensated(in_img_L.size(), in_img_L.type());
     Mat right_img_compensated(in_img_R.size(), in_img_R.type());
     if (disable_light_compen)
@@ -654,9 +618,9 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     std::cout << "run-time (LightCompen) = " << runTime << " (sec)" << "\n";
 #endif
 
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     // Fisheye Unwarping
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     fish_unwarp(map_x, map_y, left_img_compensated, left_unwarped);
     fish_unwarp(map_x, map_y, right_img_compensated, right_unwarped);
 
@@ -672,14 +636,13 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     imwrite("r.jpg", right_unwarped);
 #endif
 
-
 #if _PROFILING_
     tickStart = double(getTickCount());
 #endif
 
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     // Rigid Moving Least Squares Deformation
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     Mat rightImg_crop, rightImg_mls_deformed;
     rightImg_crop = right_unwarped(Rect(int(Wd / 2) - (W_in / 2), 0, W_in, Hd - 2)); // notice on (Hd-2) --> become: (Hd)
     fish_rmls_deform(mls_map_x, mls_map_y, rightImg_crop, rightImg_mls_deformed);
@@ -691,22 +654,20 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     std::cout << "run-time (MLS Deform) = " << runTime << " (sec)" << "\n";
 #endif
 
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     // Rearrange Image for Adaptive Alignment
-    //**************************************************************************        
+    //--------------------------------------------------------------------------
     Mat temp1 = left_unwarped(Rect(0, 0, int(Wd / 2), Hd - 2));
     Mat temp2 = left_unwarped(Rect(int(Wd / 2), 0, int(Wd / 2), Hd - 2));
-
     Mat left_unwarped_arr; // re-arranged left unwarped
     cv::hconcat(temp2, temp1, left_unwarped_arr);
-
     Mat leftImg_crop;
     leftImg_crop = left_unwarped_arr(Rect(int(Wd / 2) - (W_in / 2), 0, W_in, Hd - 2)); 
     uint16_t crop = uint16_t(0.5 * Ws * (195.0 - 180.0) / 195.0); // half overlap region
 
-    //--------------------------------
+    //--------------------------------------------------------------------------
     // PARAMETERS (hard-coded) for C200 videos 
-    //--------------------------------
+    //--------------------------------------------------------------------------
     uint16_t p_wid = 55;
     uint16_t p_x1 = 90 - 15;
     uint16_t p_x2 = 1780 - 5;
@@ -714,7 +675,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     uint16_t row_start = 590;
     uint16_t row_end = 1320;
     uint16_t p_x2_ref = Ws - 2 * crop + 1;
-
+    // 
     Mat Ref_1, Ref_2, Tmpl_1, Tmpl_2;
     Ref_1  = leftImg_crop(Rect(0, row_start, p_x1_ref, row_end - row_start));
     Ref_2  = leftImg_crop(Rect(p_x2_ref, row_start, Ws - p_x2_ref, row_end - row_start));
@@ -729,13 +690,10 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
 #endif
 
 
-    //**************************************************************************
-    //
+    //--------------------------------------------------------------------------
     // Adaptive Alignment (Norm XCorr)
-    //
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     bool disableDisplay = 1;   // 1: display off, 0: display on
-
     const char* name_bound_1 = "Matching On Left Boundary";
     const char* name_bound_2 = "Matching On Right Boundary";
 
@@ -744,7 +702,6 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
 #endif
 
     cv::Mat warpedRightImg;
-
     if (disable_refine_align)
     {
         warpedRightImg = rightImg_mls_deformed;
@@ -786,7 +743,8 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
         //--------------------------------------------------------------
         // Warp Image
         //--------------------------------------------------------------
-        cv::warpPerspective(rightImg_mls_deformed, warpedRightImg, tform_refine_mat, rightImg_mls_deformed.size(), INTER_LINEAR);
+        cv::warpPerspective(rightImg_mls_deformed, warpedRightImg, tform_refine_mat, 
+                            rightImg_mls_deformed.size(), INTER_LINEAR);
 
 #if _PROFILING_
         tickEnd = double(getTickCount());
@@ -812,24 +770,21 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
 } /* fish_stitch_one() */
 
 
-/*********************************************************************************************************
+/***************************************************************************************************
 *
 * Main()
 *
-*********************************************************************************************************/
+***************************************************************************************************/
 int 
 main( int argc, char** argv )
 {
     // default values
     string img_name, in_dir_name, in_img_name, in_name_L, in_name_R, out_dir_name;
     float fovd = 195.0f;
-    bool  write_enb = 0;  // no writing intermediate data to files
     bool  disable_light_compen = 1;
     bool  disable_refine_align = 1;
-
     int fr_from = 1;
     int fr_to = 1;
-
     int W_in = 1920; // default: video 3840x1920
 
     if (argc == 1)
@@ -867,20 +822,13 @@ main( int argc, char** argv )
             fovd = (float)atof(argv[i + 1]);
             i++;
         }
-        else if (string(argv[i]) == "--write")
-        {
-            write_enb = 1;
-            //i++;
-        }
         else if (string(argv[i]) == "--enable_light_compen")
         {
             disable_light_compen = 0;
-            //i++;
         }
         else if (string(argv[i]) == "--enable_refine_align")
         {
             disable_refine_align = 0;
-            //i++;
         }
         else
             ;
@@ -888,7 +836,6 @@ main( int argc, char** argv )
 
     string out_name_L, out_name_R;
     Mat in_img, in_img_L, in_img_R;
-
     double endTime;
     double totalTime;
 
@@ -897,16 +844,14 @@ main( int argc, char** argv )
     //**************************************************************************
     char buf[4 + 1]; //+1 extra char for NULL. Exception thrown for buf[4]
     int n = 0;
-
     n = snprintf(buf, sizeof(buf), "%04d", fr_from);
-
     img_name = in_dir_name + "/" + in_img_name + buf + ".jpg";
-
+     
     cout << "FishEye  --in_dir " << in_dir_name.c_str() << "  --in_img " << in_img_name.c_str() 
          << "  --out " << out_dir_name.c_str() << "  --fovd " << fovd << "  --fr_from " << fr_from 
          << "  --fr_to " << fr_to 
-         << "  --disable_light_compen " << disable_light_compen 
-         << "  --disable_refine_align " << disable_refine_align
+         << "  --enable_light_compen " << ~disable_light_compen 
+         << "  --enable_refine_align " << ~disable_refine_align
          << "\n";
 
     in_img = imread(img_name.c_str(), IMREAD_COLOR);
@@ -917,18 +862,16 @@ main( int argc, char** argv )
     }
     int Worg = in_img.size().width;
     int Horg = in_img.size().height;
-
     // Source image
     int Ws = int(Worg / 2);
     int Hs = Horg;
-
     // Destination pano
     int Wd = int(Ws * 360.0 / MAX_FOVD);
     int Hd = int(Wd / 2);
 
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     // Initialization of all precomputed data
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     cout << "Fisheye Stitcher Initialization..\n";
     //
     Mat map_x(Hd, Wd, CV_32FC1);
@@ -938,29 +881,22 @@ main( int argc, char** argv )
     Mat mls_map_x, mls_map_y;
     //
     fish_common_init(map_x, map_y, cir_mask, scale_map, mls_map_x, mls_map_y, Hs, Ws, Hd, Wd, 195);
-
-    in_img.release();
-
-    double startTime = double(getTickCount()); // frame stitching starts
-
+    // 
+    in_img.release(); 
+    double startTime = double(getTickCount()); // frame stitching starts 
     cv::Mat pano;
 
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     // Read frames and process
-    //**************************************************************************
+    //--------------------------------------------------------------------------
     for (int fr = fr_from; fr < fr_to + 1; fr++)
-    {
-
+    { 
         n = snprintf(buf, sizeof(buf), "%04d", fr);
-
         img_name = in_dir_name + "/" + in_img_name + buf + ".jpg";
-
         // Read input fisheye images
         in_img = imread(img_name.c_str(), IMREAD_COLOR);
-
         in_img_L = in_img(Rect(0, 0, Worg / 2, Horg));        // left fisheye
         in_img_R = in_img(Rect(Worg / 2, 0, Worg / 2, Horg)); // right fisheye
-
         double startOneFrTime = double(getTickCount()); // frame stitching starts
 
         //--------------------------------------------------------------
@@ -994,7 +930,6 @@ main( int argc, char** argv )
 #endif
 
         imwrite(out_name.c_str(), resize_pano);
-
     } /* for( all frames ) */
 
     // RunTime
