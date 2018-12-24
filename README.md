@@ -34,7 +34,7 @@ Please be informed that the code doesn't include the temporal coherence control,
 
 ## Performance
 
-It takes around 70ms-90ms to stitch one 3840x1920 image (02 x fisheye images captured by Samsung Gear 360 C200) on a laptop with an Intel i7-8750H CPU (CPU performance is set to [75%](https://github.com/drNoob13/batteryimprove)) + 32GB Memory. See [clip](https://youtu.be/GtZF6EKe50U).
+It takes around 70ms-90ms* to stitch one 3840x1920 image (02 x fisheye images captured by Samsung Gear 360 C200) on a laptop with an Intel i7-8750H CPU + 32GB Memory. See [clip](https://youtu.be/GtZF6EKe50U). `(*)` recorded when CPU performance is set to [75%](https://github.com/drNoob13/batteryimprove) to keep laptop cool.
 
 ----------------------------------------------------------------------
 
