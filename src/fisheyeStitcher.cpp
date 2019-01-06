@@ -5,11 +5,6 @@
 * Support : Samsung Gear360 2016-model (C200)
 * Source  : https://github.com/drNoob13/fisheyeStitcher
 *
-* Note: if you find the code useful, please cite the following papers:
-*   [1]  T. Ho, I. D. Schizas, K. R. Rao and M. Budagavi, "360-degree video stitching for 
-*        dual-fisheye lens cameras based on rigid moving least squares," ICIP 2017.
-*   [2]  T. Ho and M. Budagavi, "Dual-fisheye lens stitching for 360-degree imaging," ICASSP 2017.
-*
 ***************************************************************************************************/
 
 #include <iostream>
