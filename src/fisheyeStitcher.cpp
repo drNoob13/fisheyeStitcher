@@ -585,7 +585,7 @@ fish_blend_left( cv::Mat &bg, const cv::Mat &bg1, const cv::Mat &bg2 )
 ***************************************************************************************************/
 void 
 fish_blend( const cv::Mat &left_img, const cv::Mat &right_img_aligned, cv::Mat &pano,
-            const cv::Mat &binary_mask, const std::vector<int> blend_post )
+            const cv::Mat &binary_mask, const std::vector<int> &blend_post )
 { 
 #if GEAR360_C200
     Mat post;
@@ -596,7 +596,7 @@ fish_blend( const cv::Mat &left_img, const cv::Mat &right_img_aligned, cv::Mat &
 
     // Mask
     Mat mask = imread("./utils/mask_1920x1920_fovd_187.jpg", IMREAD_COLOR);
-#else   // use the internally created
+#else 
     // use `blend_post` instead of `post`
     // use `binary_mask` instead of `mask` from file
     Mat mask = binary_mask;
@@ -678,7 +678,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
         cv::Mat &scale_map, const cv::Mat &map_x, const cv::Mat &map_y, const cv::Mat &mls_map_x, 
         const cv::Mat &mls_map_y, const int Hs, const int Ws, const int Hd, const int Wd, 
         const int W_in, const bool disable_light_compen, const bool disable_refine_align,
-        const Mat &binary_mask, const std::vector<int> blend_post )
+        const Mat &binary_mask, const std::vector<int> &blend_post )
 {
     Mat left_unwarped, right_unwarped;
     double tickStart, tickEnd, runTime;
