@@ -10,24 +10,19 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector> 
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp> // for imshow
 #include <opencv2/calib3d.hpp> // for findHomography
+#include "opencv2/stitching/detail/seam_finders.hpp" // seam_finder
+#include <opencv2/core/utility.hpp>
 
 using namespace cv;
 using namespace std;
 
 #define     MAX_FOVD      195.0f
-
-#ifndef _MY_DEBUG_
-#   define    _MY_DEBUG_     0
-#endif
-
-#ifndef _PROFILING_
-#   define    _PROFILING_    0
-#endif
 
 // Polynomial Coefficients
 #define    P1_    -7.5625e-17
@@ -104,11 +99,11 @@ fish_2D_map( cv::Mat &map_x, cv::Mat &map_y, int Hs, int Ws, int Hd, int Wd, flo
     double ws2 = (double)Ws / 2.0 - 0.5;
     double hs2 = (double)Hs / 2.0 - 0.5;
 
-    for (int y = 0; y < Hd; y++)
+    for (int y = 0; y < Hd; ++y)
     {
         // y-coordinate in dest image relative to center
         y_d = (double)y - h2;
-        for (int x = 0; x < Wd; x++)
+        for (int x = 0; x < Wd; ++x)
         {
             x_d = (double)x - w2;
             // Convert fisheye coordinate to cartesian coordinate (equirectangular)
@@ -131,14 +126,27 @@ fish_2D_map( cv::Mat &map_x, cv::Mat &map_y, int Hs, int Ws, int Hd, int Wd, flo
 *
 ***************************************************************************************************/
 void 
-fish_mask_erect( int Ws, int Hs, float in_fovd, cv::Mat &cir_mask )
+fish_mask_erect( const int Ws, const int Hs, const float in_fovd, 
+                 cv::Mat &cir_mask, cv::Mat &inner_cir_mask )
 {
-    int wShift = int((Ws * (MAX_FOVD - in_fovd) / MAX_FOVD) / 2.0f);
+    Mat cir_mask_ = Mat(Hs, Ws, CV_8UC3);
+    Mat inner_cir_mask_ = Mat(Hs, Ws, CV_8UC3);
+    // Mat cir_mask_       = Mat(Hs, Ws, CV_8UC1);
+    // Mat inner_cir_mask_ = Mat(Hs, Ws, CV_8UC1);
 
+    int wShift = static_cast<int>(floor(((Ws * (MAX_FOVD - in_fovd) / MAX_FOVD) / 2.0f)));
+
+    cout << "wshift = " << wShift << "\n";
     // Create Circular mask to crop the input W.R.T. FOVD
-    int r = int(float(Ws) / 2.0f - wShift);
-    circle(cir_mask, Point(int(Hs / 2), int(Ws / 2)), r, Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
+    int r1 = static_cast<int>(floor((double(Ws) / 2.0)));
+    int r2 = static_cast<int>(floor((double(Ws) / 2.0 - wShift * 2.0)));
+    circle(cir_mask_,       Point(int(Hs / 2), int(Ws / 2)), r1, Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
+    circle(inner_cir_mask_, Point(int(Hs / 2), int(Ws / 2)), r2, Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
 
+    cir_mask_.convertTo(cir_mask, CV_8UC3);
+    inner_cir_mask_.convertTo(inner_cir_mask, CV_8UC3);
+    // cir_mask_.convertTo(cir_mask, CV_8UC1);
+    // inner_cir_mask_.convertTo(inner_cir_mask, CV_8UC1);
 } /* fish_mask_erect() */
 
 
@@ -171,9 +179,9 @@ fish_compen_map( const int H, const int W, const cv::Mat &R_pf, cv::Mat &scale_m
     int x, y;
     float r, a, b;
 
-    for (x = 0; x < W_; x++)
+    for (x = 0; x < W_; ++x)
     {
-        for (y = 0; y < H_; y++)
+        for (y = 0; y < H_; ++y)
         {
             r = floor(sqrt(std::pow(x, 2) + std::pow(y, 2)));
             if (r >= (W_ - 1))
@@ -236,6 +244,86 @@ fish_lighFO_compen( cv::Mat out_img, cv::Mat &in_img, const cv::Mat &scale_map )
 } /* fish_lighFO_compen() */
 
 
+void
+fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
+                  const int Ws, const int Hs, const int Wd, const int Hd,
+                  const Mat &map_x, const Mat &map_y,
+                  cv::Mat &binary_mask, std::vector<int> &blend_post )
+{
+    Mat inner_cir_mask_n;
+    Mat ring_mask, ring_mask_unwarped;
+
+    int Ws2 = static_cast<int>(Ws / 2);
+    int Hs2 = static_cast<int>(Hs / 2);
+    int Wd2 = static_cast<int>(Wd / 2);
+    bitwise_not(inner_cir_mask, inner_cir_mask_n);
+
+    cir_mask.copyTo(ring_mask, inner_cir_mask_n);
+    
+    remap(ring_mask, ring_mask_unwarped, map_x, map_y, INTER_LINEAR, 
+          BORDER_CONSTANT, Scalar(0, 0, 0));
+    
+    Mat mask_ = ring_mask_unwarped(Rect(Wd2-Ws2, 0, Ws, Hd)); 
+    mask_.convertTo(mask_, CV_8UC3);
+
+    int H_ = mask_.size().height;
+    int W_ = mask_.size().width;
+
+    int ridx, cidx;
+
+    const int first_zero_col = 120; // first cidx that mask value is zero
+    const int first_zero_row =  45; // first ridx that mask value is zero
+
+    // Clean up
+    for( ridx=0; ridx < H_; ++ridx)
+    {
+        if( cidx < first_zero_col || cidx > W_-first_zero_col )
+        {
+            mask_.at<Vec3b>(Point(cidx,ridx)) = Vec3b(255,255,255);
+        }
+    }
+
+    for( ridx=0; ridx < H_; ++ridx )
+    {
+        for( cidx=0; cidx < W_; ++cidx )
+        {
+            if( (ridx < (static_cast<int>(H_/2)) ) &&
+                (cidx > first_zero_col-1) && 
+                (cidx < W_-first_zero_col+1) )
+            { 
+                mask_.at<Vec3b>(Point(cidx,ridx)) = Vec3b(0, 0, 0);
+            }
+        }
+    }
+
+    int offset = 30;
+    for( ridx=0; ridx < H_; ++ridx )
+    {
+        if( ridx > H_-first_zero_row )
+        {
+            blend_post.push_back( 0 ); 
+            continue;
+        }
+        for( cidx=first_zero_col-10; cidx < W_/2+10; ++cidx )
+        {
+            Vec3b color = mask_.at<Vec3b>(Point(cidx,ridx));
+            if( color == Vec3b(0,0,0))
+            {
+                blend_post.push_back( cidx - offset );
+                break; 
+            }
+        } 
+    }
+
+    mask_.convertTo( binary_mask, CV_8UC3 );
+
+#if MY_DEBUG
+    cout << "size mask_ = " << mask_.size() << ", type = " << mask_.type() << ", ch = " << mask_.channels() << "\n";
+    imwrite("mask.jpg", mask_);
+#endif
+}
+
+
 /***************************************************************************************************
 *
 * Common Preparation
@@ -244,14 +332,25 @@ fish_lighFO_compen( cv::Mat out_img, cv::Mat &in_img, const cv::Mat &scale_map )
 *
 ***************************************************************************************************/
 void 
-fish_common_init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, cv::Mat &scale_map, cv::Mat &mls_map_x, 
-                  cv::Mat &mls_map_y, int Hs, const int Ws, const int Hd, const int Wd, const float fovd )
+fish_common_init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, 
+                  cv::Mat &scale_map, cv::Mat &mls_map_x, cv::Mat &mls_map_y,
+                  cv::Mat &binary_mask, std::vector<int> &blend_post,
+                  int Hs, const int Ws, const int Hd, 
+                  const int Wd, const float fovd )
 {
     // Unwarp map_x, map_y, cir_mask
     fish_2D_map(map_x, map_y, Hs, Ws, Hd, Wd, fovd);
 
-    // Create Circular mask to Crop the input W.R.T FOVD (mask all data outside the FOVD circle)
-    fish_mask_erect(Ws, Hs, fovd, cir_mask);
+    CV_Assert( (Hs % 2 == 0) && (Ws % 2 == 0) );
+
+    // Create Circular mask to Crop the input W.R.T FOVD 
+    // (mask all data outside the FOVD circle)
+    Mat inner_cir_mask;
+    double inner_fovd = 183.0;
+    fish_mask_erect(Ws, Hs, inner_fovd, cir_mask, inner_cir_mask);
+
+    fish_create_blend_mask( cir_mask, inner_cir_mask, Ws, Hs, Wd, Hd, 
+                      map_x, map_y, binary_mask, blend_post );
 
     // Scale_Map Reconstruction for Fisheye Light Fall-off Compensation
     int H = Hs;
@@ -260,7 +359,7 @@ fish_common_init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, cv::Mat &sc
     Mat x_coor = Mat::zeros(1, W_, CV_32F);
     Mat temp(x_coor.size(), x_coor.type());
 
-    for (int i = 0; i < W_; i++)
+    for (int i = 0; i < W_; ++i)
     {
         x_coor.at<float>(0, i) = i;
     }
@@ -402,7 +501,7 @@ fish_ctrl_points_construct( vector<Point2f> &movingPoints, vector<Point2f> &fixe
 *
 ***************************************************************************************************/
 void 
-fish_blend_right( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
+fish_blend_right( cv::Mat &bg, const cv::Mat &bg1, const cv::Mat &bg2 )
 {
     int h = bg1.size().height;
     int w = bg1.size().width;
@@ -420,9 +519,9 @@ fish_blend_right( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
     bgr_bg[1] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
     bgr_bg[2] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
 
-    for (int r = 0; r < h; r++)
+    for (int r = 0; r < h; ++r)
     {
-        for (int c = 0; c < w; c++)
+        for (int c = 0; c < w; ++c)
         {
             alpha1 = double(c) / double(w);
             alpha2 = 1 - alpha1;
@@ -443,7 +542,7 @@ fish_blend_right( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
 *
 ***************************************************************************************************/
 void 
-fish_blend_left( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
+fish_blend_left( cv::Mat &bg, const cv::Mat &bg1, const cv::Mat &bg2 )
 {
     int h = bg1.size().height;
     int w = bg1.size().width;
@@ -461,9 +560,9 @@ fish_blend_left( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
     bgr_bg[1] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
     bgr_bg[2] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
 
-    for (int r = 0; r < h; r++)
+    for (int r = 0; r < h; ++r)
     {
-        for (int c = 0; c < w; c++)
+        for (int c = 0; c < w; ++c)
         {
             alpha1 = (double(w) - c + 1) / double(w);
             alpha2 = 1 - alpha1;
@@ -486,16 +585,23 @@ fish_blend_left( cv::Mat &bg, cv::Mat &bg1, cv::Mat &bg2 )
 *
 ***************************************************************************************************/
 void 
-fish_blend( cv::Mat &left_img, cv::Mat &right_img_aligned, cv::Mat &pano )
-{
-    // Read YML
+fish_blend( const cv::Mat &left_img, const cv::Mat &right_img_aligned, cv::Mat &pano,
+            const cv::Mat &binary_mask, const std::vector<int> blend_post )
+{ 
+#if GEAR360_C200
     Mat post;
+    // Read YML
     cv::FileStorage fs("./utils/post_find.yml", FileStorage::READ);
     fs["post_ret"] >> post; // 1772 x 1
     fs.release();
 
     // Mask
     Mat mask = imread("./utils/mask_1920x1920_fovd_187.jpg", IMREAD_COLOR);
+#else   // use the internally created
+    // use `blend_post` instead of `post`
+    // use `binary_mask` instead of `mask` from file
+    Mat mask = binary_mask;
+#endif
     int H = mask.size().height;
     int W = mask.size().width;
 
@@ -506,9 +612,13 @@ fish_blend( cv::Mat &left_img, cv::Mat &right_img_aligned, cv::Mat &pano )
     int  sideW = 45;
     Mat left_blend, right_blend;
 
-    for (int r = 0; r < H; r++)
+    for (int r = 0; r < H; ++r)
     {
+#if GEAR360_C200 
         int p = post.at<float>(r, 0);
+#else
+        int p = blend_post[r];
+#endif
         if (p == 0)
         {
             continue;
@@ -531,7 +641,7 @@ fish_blend( cv::Mat &left_img, cv::Mat &right_img_aligned, cv::Mat &pano )
         bright.copyTo(rt_win_2);
     }
 
-#if _MY_DEBUG_
+#if MY_DEBUG
     imwrite("left_crop_blend.jpg", left_img_cr);
     imwrite("right_blend.jpg", right_img_aligned);
 #endif
@@ -568,12 +678,13 @@ void
 fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::Mat &cir_mask, 
         cv::Mat &scale_map, const cv::Mat &map_x, const cv::Mat &map_y, const cv::Mat &mls_map_x, 
         const cv::Mat &mls_map_y, const int Hs, const int Ws, const int Hd, const int Wd, 
-        const int W_in, const bool disable_light_compen, const bool disable_refine_align )
+        const int W_in, const bool disable_light_compen, const bool disable_refine_align,
+        const Mat &binary_mask, const std::vector<int> blend_post )
 {
     Mat left_unwarped, right_unwarped;
     double tickStart, tickEnd, runTime;
 
-#if _PROFILING_
+#if PROFILING
     tickStart = double(getTickCount());
 #endif
 
@@ -583,7 +694,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     bitwise_and(in_img_L, cir_mask, in_img_L); // Left image
     bitwise_and(in_img_R, cir_mask, in_img_R); // Right image
 
-#if _PROFILING_
+#if PROFILING
     tickEnd = double(getTickCount());
     runTime = (tickEnd - tickStart) / getTickFrequency();
     tickStart = tickEnd;
@@ -606,7 +717,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
         fish_lighFO_compen(right_img_compensated, in_img_R, scale_map);
     }
 
-#if _PROFILING_
+#if PROFILING
     tickEnd = double(getTickCount());
     runTime = (tickEnd - tickStart) / getTickFrequency();
     tickStart = tickEnd;
@@ -619,19 +730,19 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     fish_unwarp(map_x, map_y, left_img_compensated, left_unwarped);
     fish_unwarp(map_x, map_y, right_img_compensated, right_unwarped);
 
-#if _PROFILING_
+#if PROFILING
     tickEnd = double(getTickCount());
     runTime = (tickEnd - tickStart) / getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (Unwarp) = " << runTime << " (sec)" << "\n";
 #endif
 
-#if _MY_DEBUG_
+#if MY_DEBUG
     imwrite("l.jpg", left_unwarped);
     imwrite("r.jpg", right_unwarped);
 #endif
 
-#if _PROFILING_
+#if PROFILING
     tickStart = double(getTickCount());
 #endif
 
@@ -642,7 +753,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     rightImg_crop = right_unwarped(Rect(int(Wd / 2) - (W_in / 2), 0, W_in, Hd - 2)); // notice on (Hd-2) --> become: (Hd)
     fish_rmls_deform(mls_map_x, mls_map_y, rightImg_crop, rightImg_mls_deformed);
 
-#if _PROFILING_
+#if PROFILING
     tickEnd = double(getTickCount());
     runTime = (tickEnd - tickStart) / getTickFrequency();
     tickStart = tickEnd;
@@ -677,7 +788,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     Tmpl_1 = rightImg_mls_deformed(Rect(p_x1, row_start, p_wid, row_end - row_start));
     Tmpl_2 = rightImg_mls_deformed(Rect(p_x2, row_start, p_wid, row_end - row_start));
 
-#if _MY_DEBUG_
+#if MY_DEBUG
     imwrite("./output/Ref_1.jpg", Ref_1);
     imwrite("./output/Ref_2.jpg", Ref_2);
     imwrite("./output/Tmpl_1.jpg", Tmpl_1);
@@ -692,7 +803,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     const char* name_bound_1 = "Matching On Left Boundary";
     const char* name_bound_2 = "Matching On Right Boundary";
 
-#if _PROFILING_
+#if PROFILING
     tickStart = double(getTickCount());
 #endif
 
@@ -710,7 +821,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
         fish_norm_xcorr(matchLocLeft, Ref_1, Tmpl_1, name_bound_1, disableDisplay); // Left boundary
         fish_norm_xcorr(matchLocRight, Ref_2, Tmpl_2, name_bound_2, disableDisplay); // Right boundary
 
-#if _MY_DEBUG_
+#if MY_DEBUG
         cout << "matchLocLeft(x=" << matchLocLeft.x << ", y=" << matchLocLeft.y << "), matchLocRight(x=" << matchLocRight.x << ", y=" << matchLocRight.y << ")\n";
 #endif
 
@@ -722,7 +833,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
         //--------------------------------------------------------------
         fish_ctrl_points_construct(movingPoints, fixedPoints, matchLocLeft, matchLocRight, row_start, row_end, p_wid, p_x1, p_x2, p_x2_ref);
 
-#if _PROFILING_
+#if PROFILING
         tickEnd = double(getTickCount());
         runTime = (tickEnd - tickStart) / getTickFrequency();
         tickStart = tickEnd;
@@ -741,7 +852,7 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
         cv::warpPerspective(rightImg_mls_deformed, warpedRightImg, tform_refine_mat, 
                             rightImg_mls_deformed.size(), INTER_LINEAR);
 
-#if _PROFILING_
+#if PROFILING
         tickEnd = double(getTickCount());
         runTime = (tickEnd - tickStart) / getTickFrequency();
         tickStart = tickEnd;
@@ -753,9 +864,9 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     //--------------------------------------------------------------
     // Blend Images
     //--------------------------------------------------------------
-    fish_blend(left_unwarped_arr, warpedRightImg, pano);
+    fish_blend(left_unwarped_arr, warpedRightImg, pano, binary_mask, blend_post);
 
-#if _PROFILING_
+#if PROFILING
     tickEnd = double(getTickCount());
     runTime = (tickEnd - tickStart) / getTickFrequency();
     tickStart = tickEnd;
@@ -871,11 +982,14 @@ main( int argc, char** argv )
     //
     Mat map_x(Hd, Wd, CV_32FC1);
     Mat map_y(Hd, Wd, CV_32FC1);
-    Mat cir_mask(Hs, Ws, in_img.type());
+    Mat cir_mask;
     Mat scale_map(Hs, Ws, CV_32F);
     Mat mls_map_x, mls_map_y;
+    Mat binary_mask;             // blending
+    std::vector<int> blend_post; // blending
     //
-    fish_common_init(map_x, map_y, cir_mask, scale_map, mls_map_x, mls_map_y, Hs, Ws, Hd, Wd, 195);
+    fish_common_init(map_x, map_y, cir_mask, scale_map, mls_map_x, mls_map_y, 
+                     binary_mask, blend_post, Hs, Ws, Hd, Wd, 195);
     // 
     in_img.release(); 
     double startTime = double(getTickCount()); // frame stitching starts 
@@ -884,7 +998,7 @@ main( int argc, char** argv )
     //--------------------------------------------------------------------------
     // Read frames and process
     //--------------------------------------------------------------------------
-    for (int fr = fr_from; fr < fr_to + 1; fr++)
+    for (int fr = fr_from; fr < fr_to + 1; ++fr)
     { 
         n = snprintf(buf, sizeof(buf), "%04d", fr);
         img_name = in_dir_name + "/" + in_img_name + buf + ".jpg";
@@ -897,8 +1011,10 @@ main( int argc, char** argv )
         //--------------------------------------------------------------
         // Stitch
         //--------------------------------------------------------------
-        fish_stitch_one(pano, in_img_L, in_img_R, cir_mask, scale_map, map_x, map_y, 
-            mls_map_x, mls_map_y, Hs, Ws, Hd, Wd, W_in, disable_light_compen, disable_refine_align);
+        fish_stitch_one(pano, in_img_L, in_img_R, cir_mask, scale_map, 
+                        map_x, map_y, mls_map_x, mls_map_y, Hs, Ws, Hd, Wd, 
+                        W_in, disable_light_compen, disable_refine_align,
+                        binary_mask, blend_post );
 
         // RunTime
         endTime = double(getTickCount());
@@ -910,14 +1026,14 @@ main( int argc, char** argv )
         //--------------------------------------------------------------
         string out_name = out_dir_name + "/pano_" + in_img_name + buf + ".jpg";
 
-#if _PROFILING_
+#if PROFILING
         double tickStart = endTime; // previous count
 #endif
 
         Mat resize_pano(1920, 3840, pano.type());
         resize(pano, resize_pano, resize_pano.size(), 0, 0, INTER_LINEAR);
 
-#if _PROFILING_
+#if PROFILING
         double tickEnd = double(getTickCount());
         double runTime = (tickEnd - tickStart) / getTickFrequency();
         tickStart = tickEnd;

@@ -51,7 +51,7 @@ fileout_="stitched_${fileout_prefix}.mp4"   # stitched videos
 echo "-------------------------------------------------"
 echo "Stitching: $IN_DIR/${filein_prefix}${FR_START}:${FR_END}.jpg "
 echo "-------------------------------------------------"
-./fisheyeStitcher --in_dir $IN_DIR --in $filein_prefix --out_dir $OUT_DIR --fr $FR_START $FR_END
+./build/fisheyeStitcher --in_dir $IN_DIR --in $filein_prefix --out_dir $OUT_DIR --fr $FR_START $FR_END
 echo "finish stitching!"
 echo ""
 
