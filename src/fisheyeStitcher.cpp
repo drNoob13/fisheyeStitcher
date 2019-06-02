@@ -254,6 +254,10 @@ fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
     bitwise_not(inner_cir_mask, inner_cir_mask_n);
 
     cir_mask.copyTo(ring_mask, inner_cir_mask_n);
+
+// #if MY_DEBUG
+    imwrite("ring_mask.jpg", ring_mask);
+// #endif
     
     remap(ring_mask, ring_mask_unwarped, map_x, map_y, INTER_LINEAR, 
           BORDER_CONSTANT, Scalar(0, 0, 0));
@@ -277,7 +281,6 @@ fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
             mask_.at<Vec3b>(Point(cidx,ridx)) = Vec3b(255,255,255);
         }
     }
-
     for( ridx=0; ridx < H_; ++ridx )
     {
         for( cidx=0; cidx < W_; ++cidx )
@@ -291,6 +294,7 @@ fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
         }
     }
 
+    // Create blend_post
     int offset = 15;
     for( ridx=0; ridx < H_; ++ridx )
     {
@@ -888,6 +892,8 @@ main( int argc, char** argv )
     int    fr_from = 1;
     int    fr_to = 1;
     int    W_in = 1920; // default: video 3840x1920
+    int    image_height = 1920;
+    int    image_width = 3840;
 
     if (argc == 1)
     {
@@ -897,31 +903,19 @@ main( int argc, char** argv )
 
     for (int i = 1; i < argc; ++i)
     {
-        if (string(argv[i]) == "--out_dir")
-        {
-            out_dir_name = argv[i + 1];
-            i++;
-        }
-        else if (string(argv[i]) == "--video_in")
+        if (string(argv[i]) == "--video_in")
         {
             video_path = argv[i + 1];
             i++;
         }
-        else if (string(argv[i]) == "--in")
+        else if (string(argv[i]) == "--height")
         {
-            in_img_name = argv[i + 1];
+            image_height = (float)atof(argv[i + 1]);
             i++;
         }
-        else if (string(argv[i]) == "--in_dir")
+        else if (string(argv[i]) == "--width")
         {
-            in_dir_name = argv[i + 1];
-            i++;
-        }
-        else if (string(argv[i]) == "--fr")
-        {
-            fr_from = (int)atof(argv[i + 1]);
-            i++;
-            fr_to = (int)atof(argv[i + 1]);
+            image_width = (float)atof(argv[i + 1]);
             i++;
         }
         else if (string(argv[i]) == "--fovd")
@@ -949,10 +943,6 @@ main( int argc, char** argv )
     //**************************************************************************
     // PreComputation
     //**************************************************************************
-    char buf[4 + 1]; //+1 extra char for NULL. Exception thrown for buf[4]
-    int n = 0;
-    n = snprintf(buf, sizeof(buf), "%04d", fr_from);
-    img_name = in_dir_name + "/" + in_img_name + buf + ".jpg";
      
     cout << "FishEye  --in_dir " << in_dir_name.c_str() << "  --in_img " << in_img_name.c_str() 
          << "  --out " << out_dir_name.c_str() << "  --fovd " << fovd << "  --fr_from " << fr_from 
@@ -961,14 +951,8 @@ main( int argc, char** argv )
          << "  --enable_refine_align " << !disable_refine_align
          << "\n";
 
-    in_img = imread(img_name.c_str(), IMREAD_COLOR);
-    if (in_img.empty())
-    {
-        cout << "!! Could not open reference fisheye image: " << img_name.c_str() << " !!\n";
-        return -1;
-    }
-    int Worg = in_img.size().width;
-    int Horg = in_img.size().height;
+    int Worg = image_width;
+    int Horg = image_height;
     // Source image
     int Ws = int(Worg / 2);
     int Hs = Horg;
@@ -979,7 +963,7 @@ main( int argc, char** argv )
     //--------------------------------------------------------------------------
     // Initialization of all precomputed data
     //--------------------------------------------------------------------------
-    cout << "Fisheye Stitcher Initialization..\n";
+    std::cout << "Fisheye Stitcher Initialization..\n";
     //
     Mat map_x(Hd, Wd, CV_32FC1);
     Mat map_y(Hd, Wd, CV_32FC1);
@@ -1031,7 +1015,7 @@ main( int argc, char** argv )
 
         if( img.empty())
         {
-            cout << "end of video\n";
+            std::cout << "end of video\n";
             break;
         }
 
@@ -1053,7 +1037,7 @@ main( int argc, char** argv )
         // RunTime
         endTime = double(getTickCount());
         totalTime = (endTime - startOneFrTime) / getTickFrequency();
-        cout << "Stitching frame: " << count << " (" << totalTime << " sec)\n";
+        std::cout << "Stitching frame: " << count << " (" << totalTime << " sec)\n";
 
 #if PROFILING
         double tickStart = endTime; // previous count
@@ -1075,7 +1059,7 @@ main( int argc, char** argv )
     VCap.release();
     VOut.release();
 
-    cout << "Write to video [" 
+    std::cout << "Write to video [" 
          << Wd << "x" << Hd << "] @ " 
          << frame_fps << "fps  --> " 
          << video_out_name << "\n";

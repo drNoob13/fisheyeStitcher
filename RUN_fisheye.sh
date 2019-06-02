@@ -21,6 +21,24 @@ OUT_DIR='./Stitched_Frames'
 RESO='3840x1920'
 VIDEO_DIR='./Stitched_Video'
 video_in='./input/input_video.mp4'
+BUILD_DIR='./build'
+
+# Build
+if [ ! -d "$BUILD_DIR" ]; then
+    mkdir $BUILD_DIR
+
+    cd $BUILD_DIR
+    cmake ..
+    make -j 4
+    cd ..
+fi
+
+# Update
+if [ -d "$BUILD_DIR" ]; then
+    cd $BUILD_DIR
+    make -j 4
+    cd ..
+fi
 
 # Uncompress test images
 if [ -f "${IN_DIR}/${compressed_}" ]; then
@@ -56,6 +74,8 @@ echo "-------------------------------------------------"
                         --in_dir $IN_DIR     \
                         --in $filein_prefix  \
                         --out_dir $OUT_DIR   \
+                        --height 1920        \
+                        --width  3840        \
                         --fr $FR_START $FR_END
 
 echo "finish stitching!"
