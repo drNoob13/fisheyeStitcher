@@ -16,8 +16,8 @@ The code is built and tested in Ubuntu 16.04 and Ubuntu 18.04
 
 ### Pre-requisite
 
-* C++11-support compiler (v1.1)
-* CMake 3.5.1
+* C++11-support compiler.
+* CMake 3.5.1.
 * OpenCV 3.4.2 (with calib3d).
 
 ### Build
