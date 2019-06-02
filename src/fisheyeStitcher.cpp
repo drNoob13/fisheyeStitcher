@@ -255,9 +255,9 @@ fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
 
     cir_mask.copyTo(ring_mask, inner_cir_mask_n);
 
-// #if MY_DEBUG
+#if MY_DEBUG
     imwrite("ring_mask.jpg", ring_mask);
-// #endif
+#endif
     
     remap(ring_mask, ring_mask_unwarped, map_x, map_y, INTER_LINEAR, 
           BORDER_CONSTANT, Scalar(0, 0, 0));
