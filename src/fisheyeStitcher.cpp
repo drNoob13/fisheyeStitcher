@@ -131,12 +131,9 @@ fish_mask_erect( const int Ws, const int Hs, const float in_fovd,
 {
     Mat cir_mask_ = Mat(Hs, Ws, CV_8UC3);
     Mat inner_cir_mask_ = Mat(Hs, Ws, CV_8UC3);
-    // Mat cir_mask_       = Mat(Hs, Ws, CV_8UC1);
-    // Mat inner_cir_mask_ = Mat(Hs, Ws, CV_8UC1);
 
     int wShift = static_cast<int>(floor(((Ws * (MAX_FOVD - in_fovd) / MAX_FOVD) / 2.0f)));
 
-    cout << "wshift = " << wShift << "\n";
     // Create Circular mask to crop the input W.R.T. FOVD
     int r1 = static_cast<int>(floor((double(Ws) / 2.0)));
     int r2 = static_cast<int>(floor((double(Ws) / 2.0 - wShift * 2.0)));
@@ -145,8 +142,6 @@ fish_mask_erect( const int Ws, const int Hs, const float in_fovd,
 
     cir_mask_.convertTo(cir_mask, CV_8UC3);
     inner_cir_mask_.convertTo(inner_cir_mask, CV_8UC3);
-    // cir_mask_.convertTo(cir_mask, CV_8UC1);
-    // inner_cir_mask_.convertTo(inner_cir_mask, CV_8UC1);
 } /* fish_mask_erect() */
 
 
@@ -296,7 +291,7 @@ fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
         }
     }
 
-    int offset = 30;
+    int offset = 15;
     for( ridx=0; ridx < H_; ++ridx )
     {
         if( ridx > H_-first_zero_row )
@@ -886,12 +881,13 @@ main( int argc, char** argv )
 {
     // default values
     string img_name, in_dir_name, in_img_name, in_name_L, in_name_R, out_dir_name;
-    float fovd = 195.0f;
-    bool  disable_light_compen = 1;
-    bool  disable_refine_align = 1;
-    int fr_from = 1;
-    int fr_to = 1;
-    int W_in = 1920; // default: video 3840x1920
+    string video_path = "";
+    float  fovd = 195.0f;
+    bool   disable_light_compen = true;
+    bool   disable_refine_align = true;
+    int    fr_from = 1;
+    int    fr_to = 1;
+    int    W_in = 1920; // default: video 3840x1920
 
     if (argc == 1)
     {
@@ -904,6 +900,11 @@ main( int argc, char** argv )
         if (string(argv[i]) == "--out_dir")
         {
             out_dir_name = argv[i + 1];
+            i++;
+        }
+        else if (string(argv[i]) == "--video_in")
+        {
+            video_path = argv[i + 1];
             i++;
         }
         else if (string(argv[i]) == "--in")
@@ -930,11 +931,11 @@ main( int argc, char** argv )
         }
         else if (string(argv[i]) == "--enable_light_compen")
         {
-            disable_light_compen = 0;
+            disable_light_compen = false;
         }
         else if (string(argv[i]) == "--enable_refine_align")
         {
-            disable_refine_align = 0;
+            disable_refine_align = false;
         }
         else
             ;
@@ -956,8 +957,8 @@ main( int argc, char** argv )
     cout << "FishEye  --in_dir " << in_dir_name.c_str() << "  --in_img " << in_img_name.c_str() 
          << "  --out " << out_dir_name.c_str() << "  --fovd " << fovd << "  --fr_from " << fr_from 
          << "  --fr_to " << fr_to 
-         << "  --enable_light_compen " << ~disable_light_compen 
-         << "  --enable_refine_align " << ~disable_refine_align
+         << "  --enable_light_compen " << !disable_light_compen 
+         << "  --enable_refine_align " << !disable_refine_align
          << "\n";
 
     in_img = imread(img_name.c_str(), IMREAD_COLOR);
@@ -992,20 +993,53 @@ main( int argc, char** argv )
                      binary_mask, blend_post, Hs, Ws, Hd, Wd, 195);
     // 
     in_img.release(); 
-    double startTime = double(getTickCount()); // frame stitching starts 
+
+    // Video input 
+    VideoCapture VCap( video_path );
+    if( !VCap.isOpened() )
+    {
+        CV_Error_(Error::StsBadArg, ("Error opening video: %s",
+                    video_path.c_str()));
+    } 
+    int    frame_fps      = VCap.get(CAP_PROP_FPS);
+    int    frame_width    = VCap.get(CAP_PROP_FRAME_WIDTH);
+    int    frame_height   = VCap.get(CAP_PROP_FRAME_HEIGHT);
+    string video_out_name = "stitched_video.avi";
+
+    // Video output
+    cv::VideoWriter VOut;
+    VOut.open( video_out_name, VideoWriter::fourcc('X','2','6','4'),
+               frame_fps, Size(Wd, Hd-2) );
+    if( !VOut.isOpened() )
+    {
+        CV_Error_(Error::StsBadArg, 
+                  ("Error opening video: %s", video_out_name.c_str()));
+    } 
     cv::Mat pano;
 
     //--------------------------------------------------------------------------
     // Read frames and process
     //--------------------------------------------------------------------------
-    for (int fr = fr_from; fr < fr_to + 1; ++fr)
-    { 
-        n = snprintf(buf, sizeof(buf), "%04d", fr);
-        img_name = in_dir_name + "/" + in_img_name + buf + ".jpg";
-        // Read input fisheye images
-        in_img = imread(img_name.c_str(), IMREAD_COLOR);
-        in_img_L = in_img(Rect(0, 0, Worg / 2, Horg));        // left fisheye
-        in_img_R = in_img(Rect(Worg / 2, 0, Worg / 2, Horg)); // right fisheye
+    int count = 0;
+    Mat img;
+
+    double startTime = double(getTickCount()); // frame stitching starts 
+
+    while( 1 )
+    {
+        VCap >> img;
+
+        if( img.empty())
+        {
+            cout << "end of video\n";
+            break;
+        }
+
+        Mat img_l, img_r;
+        in_img_L = img(Rect(0, 0, Worg / 2, Horg));        // left fisheye
+        in_img_R = img(Rect(Worg / 2, 0, Worg / 2, Horg)); // right fisheye
+
+
         double startOneFrTime = double(getTickCount()); // frame stitching starts
 
         //--------------------------------------------------------------
@@ -1019,19 +1053,16 @@ main( int argc, char** argv )
         // RunTime
         endTime = double(getTickCount());
         totalTime = (endTime - startOneFrTime) / getTickFrequency();
-        cout << "Stitching frame: " << fr << " (" << totalTime << " sec)\n";
-
-        //--------------------------------------------------------------
-        // Output pano
-        //--------------------------------------------------------------
-        string out_name = out_dir_name + "/pano_" + in_img_name + buf + ".jpg";
+        cout << "Stitching frame: " << count << " (" << totalTime << " sec)\n";
 
 #if PROFILING
         double tickStart = endTime; // previous count
 #endif
+        // cout << "size pano" << pano.size()
+        VOut << pano;
 
-        Mat resize_pano(1920, 3840, pano.type());
-        resize(pano, resize_pano, resize_pano.size(), 0, 0, INTER_LINEAR);
+        // Mat resize_pano(1920, 3840, pano.type());
+        // resize(pano, resize_pano, resize_pano.size(), 0, 0, INTER_LINEAR);
 
 #if PROFILING
         double tickEnd = double(getTickCount());
@@ -1039,14 +1070,21 @@ main( int argc, char** argv )
         tickStart = tickEnd;
         std::cout << "run-time (resize) = " << runTime << " (sec)" << "\n";
 #endif
+        count++;
+    }
+    VCap.release();
+    VOut.release();
 
-        imwrite(out_name.c_str(), resize_pano);
-    } /* for( all frames ) */
+    cout << "Write to video [" 
+         << Wd << "x" << Hd << "] @ " 
+         << frame_fps << "fps  --> " 
+         << video_out_name << "\n";
 
     // RunTime
     endTime = double(getTickCount());
     totalTime = (endTime - startTime) / getTickFrequency();
-    std::cout << "run-time (sequence) = " << totalTime / 60 << " min" << " (" << totalTime << " sec)\n";
+    std::cout << "Total time = " << totalTime / 60 << " min" 
+              << " (" << totalTime << " sec)\n";
 
     return 0;
 
