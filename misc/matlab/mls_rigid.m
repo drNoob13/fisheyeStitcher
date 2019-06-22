@@ -1,6 +1,6 @@
 function [Xd,Yd] = mls_rigid(p, q, H, W, max_core)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% mls_rigid: A naive implementation of the rigid moving least squares for
+% mls_rigid: A naive implementation of rigid moving least squares for
 %            point handles.
 %   Input:
 %       p, q: correspondence points.
