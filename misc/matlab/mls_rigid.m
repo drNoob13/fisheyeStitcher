@@ -10,7 +10,7 @@ function [Xd,Yd] = mls_rigid(p, q, H, W, max_core)
 %       Xd,Yd: new position grids.
 %   Ref:
 %     S. Schaefer et al., "Image Deformation Using Moving Least Squares",
-%     ACM Transactions on Graphics (TOG), 20016.
+%     ACM Transactions on Graphics (TOG), 2006.
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
