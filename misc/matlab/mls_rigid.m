@@ -1,12 +1,16 @@
 function [Xd,Yd] = mls_rigid(p, q, H, W, max_core)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% mls_rigid: Generate rigid moving least squares grids.
+% mls_rigid: A naive implementation of the rigid moving least squares for
+%            point handles.
 %   Input:
-%       p, q: correspondence points
-%       H, W: image height and image width
-%       max_core: user-defined number of CPU cores in the pool
+%       p, q: correspondence points.
+%       H, W: image height and image width.
+%       max_core: user-defined number of CPU cores in the pool.
 %   Output:
 %       Xd,Yd: new position grids.
+%   Ref:
+%     S. Schaefer et al., "Image Deformation Using Moving Least Squares",
+%     ACM Transactions on Graphics (TOG), 20016.
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
