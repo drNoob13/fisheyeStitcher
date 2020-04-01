@@ -13,7 +13,10 @@ endif()
 
 find_package( OpenCV REQUIRED )
 
-include_directories( ${OpenCV_INCLUDE_DIRS} )
+include_directories( 
+    ${OpenCV_INCLUDE_DIRS} 
+    include
+)
 
 add_definitions( 
     # -DMY_DEBUG      # Print debug info and dump intermediate images 
@@ -21,6 +24,8 @@ add_definitions(
     # -DGEAR360_C200  # Setting for GEAR 360 C200 camera 
 )
 
-add_executable( fisheyeStitcher src/fisheyeStitcher.cpp )
+add_executable( fisheyeStitcher 
+    src/fisheye_stitcher.cpp 
+)
 
 target_link_libraries( fisheyeStitcher ${OpenCV_LIBS} )
