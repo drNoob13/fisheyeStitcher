@@ -1,9 +1,11 @@
 //----------------------------------------------------------------------------//
+//                                                                            //
 // This file is part of the fisheye stitcher project.                         //
 // Author  : Tuan Phan Minh Ho (drnoob2013@gmail.com)                         //
 // Function: 360-degree Video Stitcher for Dual-fisheye Lens Camera           //
 // Support : Samsung Gear360 2016-model (C200)                                //
 // Source  : https://github.com/drNoob13/fisheyeStitcher                      //
+//                                                                            //
 //----------------------------------------------------------------------------//
 #include "fisheye_stitcher.hpp"
 
@@ -12,11 +14,19 @@ namespace stitcher
 
 FisheyeStitcher::FisheyeStitcher(int width, int height, int in_fovd, 
                                  bool enb_light_compen, bool enb_refine_align) 
-:   m_ws(width), m_hs(height), m_in_fovd(in_fovd),
-    m_enb_light_compen(enb_light_compen), m_enb_refine_align(enb_refine_align) 
+:   m_ws_org(width), m_hs_org(height), m_in_fovd(in_fovd), m_inner_fovd(183.0f),
+    m_enb_light_compen(enb_light_compen), m_enb_refine_align(enb_refine_align)
 { 
-    int m_wd = int(width * 360.0 / MAX_FOVD);
-    int m_hd = int(height / 2);
+    CV_Assert( (width % 2 == 0) && (height % 2 == 0) );
+
+    // Source images
+    m_ws = static_cast<int>(width / 2); // e.g. 1920 
+    m_hs = height; // e.g. 1920
+    // Destination pano
+    m_wd = static_cast<int>(m_ws * 360.0 / MAX_FOVD);
+    m_hd = m_hs;
+
+    init();
 }
 
 FisheyeStitcher::~FisheyeStitcher()
@@ -29,20 +39,21 @@ FisheyeStitcher::~FisheyeStitcher()
 //   Unwarp source fisheye -> 360x180 equirectangular
 //
 cv::Mat
-FisheyeStitcher::fishUnwarp( const cv::Mat &map_x, const cv::Mat &map_y, 
-                              const cv::Mat &src )
+FisheyeStitcher::unwarp( const cv::Mat &src )
 {
     cv::Mat dst(src.size(), src.type());
-    remap(src, dst, map_x, map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, 
+    remap(src, dst, m_map_x, m_map_y, cv::INTER_LINEAR, cv::BORDER_CONSTANT, 
           cv::Scalar(0, 0, 0));
     return dst;
-}
+
+}   // unwarp()
 
 // 
-// @brief Function: convert fisheye-vertical to equirectangular (reference: Panotool)
+// @brief Convert fisheye-vertical to equirectangular (reference: Panotool)
 // 
 std::tuple<double, double>  
-FisheyeStitcher::fish2Eqt( double x_dest, double  y_dest, double W_rad )
+FisheyeStitcher::fish2Eqt( const double x_dest, const double y_dest, 
+                           const double W_rad )
 // void 
 // fish2Eqt( double x_dest, double  y_dest, double* x_src, double* y_src, double W_rad )
 {
@@ -76,12 +87,14 @@ FisheyeStitcher::fish2Eqt( double x_dest, double  y_dest, double W_rad )
 
 // 
 // @brief Map 2D fisheye image to 2D projected sphere
+// @param
+//     map_x 
+//     map_y
 // 
 std::tuple<cv::Mat, cv::Mat>
 FisheyeStitcher::fish2Map()
 //remove void fish_2D_map( cv::Mat &map_x, cv::Mat &map_y, int Hs, int Ws, int Hd, int Wd, float in_fovd )
 {
-    // TODO: check type if fail
     cv::Mat map_x(m_hd, m_wd, CV_32FC1);
     cv::Mat map_y(m_hd, m_wd, CV_32FC1);
     static double w_rad = m_wd / (2 * CV_PI);
@@ -111,6 +124,7 @@ FisheyeStitcher::fish2Map()
         }
     }
     return std::make_tuple(map_x, map_y);
+
 }   // fish2Map()
 
 // 
@@ -122,7 +136,7 @@ FisheyeStitcher::createMask()
     cv::Mat cir_mask_ = cv::Mat(m_hs, m_ws, CV_8UC3);
     cv::Mat inner_cir_mask_ = cv::Mat(m_hs, m_ws, CV_8UC3);
 
-    int wShift = static_cast<int>(std::floor(((m_ws * (MAX_FOVD - m_in_fovd) / MAX_FOVD) / 2.0f)));
+    int wShift = static_cast<int>(std::floor(((m_ws * (MAX_FOVD - m_inner_fovd) / MAX_FOVD) / 2.0f)));
 
     // Create Circular mask to crop the input W.R.T. FOVD
     int r1 = static_cast<int>(std::floor((double(m_ws) / 2.0)));
@@ -135,29 +149,70 @@ FisheyeStitcher::createMask()
     cir_mask_.convertTo(cir_mask, CV_8UC3);
     inner_cir_mask_.convertTo(inner_cir_mask, CV_8UC3);
     return std::make_tuple(cir_mask, inner_cir_mask);
+
 }   // createMask() 
 
 // 
 // @brief Rigid Moving Least Squares Interpolation
 // 
 cv::Mat
-FisheyeStitcher::deform( const cv::Mat &map_x, const cv::Mat &map_y, 
-                         const cv::Mat &src )
+FisheyeStitcher::deform( const cv::Mat &src )
 {
     cv::Mat dst(src.size(), src.type());
-    remap(src, dst, map_x, map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+    remap(src, dst, m_mls_map_x, m_mls_map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     return dst;
+
 }   // deform() 
 
 // 
 // @brief Fisheye Light Fall-off Compensation: Scale_Map Construction
+// @param
+//     R_pf (in)
+//     scale_map (out)
 // 
 cv::Mat 
-FisheyeStitcher::compenMap( const cv::Mat &R_pf )
-// FisheyeStitcher::compenMap( const int H, const int W, const cv::Mat &R_pf )
+FisheyeStitcher::genScaleMap()
+// FisheyeStitcher::genScaleMap( const cv::Mat &R_pf )
+// FisheyeStitcher::genScaleMap( const int H, const int W, const cv::Mat &R_pf )
 {
-    // int W_ = floor(W / 2);
-    // int H_ = floor(H / 2);
+    // TODO: remove duplicate params
+
+    //------------------------------------------------------------------------//
+    // Generate R_pf (reverse light fall-off profile)                         //
+    //------------------------------------------------------------------------//
+    int H = m_hs;
+    int W = m_ws;
+    int W_ = W / 2;
+    cv::Mat x_coor = cv::Mat::zeros(1, W_, CV_32F);
+    cv::Mat temp(x_coor.size(), x_coor.type());
+
+    for (int i = 0; i < W_; ++i)
+    {
+        x_coor.at<float>(0, i) = i;
+    }
+
+    //-----------------------------------------------------------------------//
+    //  R_pf = P1_ * (x_coor.^5.0) + P2_ * (x_coor.^4.0) +                   //
+    //         P3_ * (x_coor.^3.0) + P4_ * (x_coor.^2.0) +                   //
+    //         P5_ * x_coor        + P6_;                                    //
+    //-----------------------------------------------------------------------//
+    cv::Mat R_pf = cv::Mat::zeros(x_coor.size(), x_coor.type());
+    cv::pow(x_coor, 5.0, temp);
+    R_pf = R_pf + P1_ * temp;
+    cv::pow(x_coor, 4.0, temp);
+    R_pf = R_pf + P2_ * temp;
+    cv::pow(x_coor, 3.0, temp);
+    R_pf = R_pf + P3_ * temp;
+    cv::pow(x_coor, 2.0, temp);
+    R_pf = R_pf + P4_ * temp;
+    R_pf = R_pf + P5_ * x_coor + P6_;
+    
+    // PF_LUT
+    cv::divide(1, R_pf, R_pf); //element-wise inverse
+
+    //------------------------------------------------------------------------//
+    // Generate scale map                                                     //
+    //------------------------------------------------------------------------//
     int W_ = std::floor(m_ws / 2);
     int H_ = std::floor(m_hs / 2);
 
@@ -205,56 +260,63 @@ FisheyeStitcher::compenMap( const cv::Mat &R_pf )
     cv::vconcat(quad_21, quad_34, scale_map);
 
     return scale_map;
-}   // compenMap() 
+
+}   // genScaleMap() 
 
 //
 // @brief Fisheye Light Fall-off Compensation
 //
-void 
-compenLightFO( cv::Mat out_img, cv::Mat &in_img, const cv::Mat &scale_map )
+cv::Mat
+FisheyeStitcher::compenLightFO( const cv::Mat &in_img ) 
 {
-    Mat rgb_ch[3];
-    Mat rgb_ch_double[3];
-    Mat out_img_double(in_img.size(), in_img.type());
+    cv::Mat rgb_ch[3];
+    cv::Mat rgb_ch_double[3];
+    cv::Mat out_img_double(in_img.size(), in_img.type());
     cv::split(in_img, rgb_ch);
-    rgb_ch[0].convertTo(rgb_ch_double[0], scale_map.type());
-    rgb_ch[1].convertTo(rgb_ch_double[1], scale_map.type());
-    rgb_ch[2].convertTo(rgb_ch_double[2], scale_map.type());
+    rgb_ch[0].convertTo(rgb_ch_double[0], m_scale_map.type());
+    rgb_ch[1].convertTo(rgb_ch_double[1], m_scale_map.type());
+    rgb_ch[2].convertTo(rgb_ch_double[2], m_scale_map.type());
     //
-    rgb_ch_double[0] = rgb_ch_double[0].mul(scale_map); // element-wise multiplication
-    rgb_ch_double[1] = rgb_ch_double[1].mul(scale_map);
-    rgb_ch_double[2] = rgb_ch_double[2].mul(scale_map);
+    rgb_ch_double[0] = rgb_ch_double[0].mul(m_scale_map); // element-wise multiplication
+    rgb_ch_double[1] = rgb_ch_double[1].mul(m_scale_map);
+    rgb_ch_double[2] = rgb_ch_double[2].mul(m_scale_map);
     cv::merge(rgb_ch_double, 3, out_img_double);
 
+    cv::Mat out_img;
     out_img_double.convertTo(out_img, CV_8U);
+    return out_img;
 
-} /* compenLightFO() */
+}   // compenLightFO() 
 
-
+//
+// @brief Create binary mask for blending
+//
 void
-fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
-                  const int Ws, const int Hs, const int Wd, const int Hd,
-                  const Mat &map_x, const Mat &map_y,
-                  cv::Mat &binary_mask, std::vector<int> &blend_post )
+FisheyeStitcher::createBlendMask() 
+// void
+// createBlendMask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
+//                   const int Ws, const int Hs, const int Wd, const int Hd,
+//                   const Mat &map_x, const Mat &map_y,
+//                   cv::Mat &binary_mask, std::vector<int> &m_blend_post )
 {
-    Mat inner_cir_mask_n;
-    Mat ring_mask, ring_mask_unwarped;
+    cv::Mat inner_cir_mask_n;
+    cv::Mat ring_mask, ring_mask_unwarped;
 
-    int Ws2 = static_cast<int>(Ws / 2);
-    int Hs2 = static_cast<int>(Hs / 2);
-    int Wd2 = static_cast<int>(Wd / 2);
-    bitwise_not(inner_cir_mask, inner_cir_mask_n);
+    int Ws2 = static_cast<int>(m_ws / 2);
+    int Hs2 = static_cast<int>(m_hs / 2);
+    int Wd2 = static_cast<int>(m_wd / 2);
+    bitwise_not(m_inner_cir_mask, inner_cir_mask_n);
 
-    cir_mask.copyTo(ring_mask, inner_cir_mask_n);
+    m_cir_mask.copyTo(ring_mask, inner_cir_mask_n);
 
 #if MY_DEBUG
     imwrite("ring_mask.jpg", ring_mask);
 #endif
     
-    remap(ring_mask, ring_mask_unwarped, map_x, map_y, INTER_LINEAR, 
-          BORDER_CONSTANT, Scalar(0, 0, 0));
+    cv::remap(ring_mask, ring_mask_unwarped, m_map_x, m_map_y, CV_INTER_LINEAR, 
+              cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     
-    Mat mask_ = ring_mask_unwarped(Rect(Wd2-Ws2, 0, Ws, Hd)); 
+    cv::Mat mask_ = ring_mask_unwarped(cv::Rect(Wd2-Ws2, 0, m_ws, m_hd)); 
     mask_.convertTo(mask_, CV_8UC3);
 
     int H_ = mask_.size().height;
@@ -270,7 +332,7 @@ fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
     {
         if( cidx < first_zero_col || cidx > W_-first_zero_col )
         {
-            mask_.at<Vec3b>(Point(cidx,ridx)) = Vec3b(255,255,255);
+            mask_.at<cv::Vec3b>(cv::Point(cidx,ridx)) = cv::Vec3b(255,255,255);
         }
     }
     for( ridx=0; ridx < H_; ++ridx )
@@ -278,127 +340,123 @@ fish_create_blend_mask( const cv::Mat &cir_mask, const cv::Mat &inner_cir_mask,
         for( cidx=0; cidx < W_; ++cidx )
         {
             if( (ridx < (static_cast<int>(H_/2)) ) &&
-                (cidx > first_zero_col-1) && 
-                (cidx < W_-first_zero_col+1) )
+                (cidx > first_zero_col - 1) && 
+                (cidx < W_ - first_zero_col + 1) )
             { 
-                mask_.at<Vec3b>(Point(cidx,ridx)) = Vec3b(0, 0, 0);
+                mask_.at<cv::Vec3b>(cv::Point(cidx,ridx)) = cv::Vec3b(0, 0, 0);
             }
         }
     }
 
-    // Create blend_post
+    // Create m_blend_post
     int offset = 15;
     for( ridx=0; ridx < H_; ++ridx )
     {
-        if( ridx > H_-first_zero_row )
+        if( ridx > H_ - first_zero_row )
         {
-            blend_post.push_back( 0 ); 
+            m_blend_post.push_back( 0 ); 
             continue;
         }
         for( cidx=first_zero_col-10; cidx < W_/2+10; ++cidx )
         {
-            Vec3b color = mask_.at<Vec3b>(Point(cidx,ridx));
-            if( color == Vec3b(0,0,0))
+            cv::Vec3b color = mask_.at<cv::Vec3b>(cv::Point(cidx,ridx));
+            if( color == cv::Vec3b(0,0,0))
             {
-                blend_post.push_back( cidx - offset );
+                m_blend_post.push_back( cidx - offset );
                 break; 
             }
         } 
     }
 
-    mask_.convertTo( binary_mask, CV_8UC3 );
+    // generate binary mask
+    mask_.convertTo( m_binary_mask, CV_8UC3 );
 
 #if MY_DEBUG
     cout << "size mask_ = " << mask_.size() << ", type = " << mask_.type() << ", ch = " << mask_.channels() << "\n";
     imwrite("mask.jpg", mask_);
 #endif
-}
 
+}   // createBlendMask()
 
-/***************************************************************************************************
-*
-* Common Preparation
-*    Output:   map_x, map_y(unwarping)
-*              cir_mask(circular crop)
-*
-***************************************************************************************************/
+// 
+// @brief Initialize common parameters for stitching
+// @param
+//    m_map_x; // used in deformation
+//    m_map_y; // used in deformation
+//    m_cir_mask;
+//    m_inner_cir_mask;
+//    m_binary_mask;
+//    m_blend_post;
+//    m_scale_map;
+//    m_mls_map_x;
+//    m_mls_map_y;
+// 
 void 
-fish_common_init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, 
-                  cv::Mat &scale_map, cv::Mat &mls_map_x, cv::Mat &mls_map_y,
-                  cv::Mat &binary_mask, std::vector<int> &blend_post,
-                  int Hs, const int Ws, const int Hd, 
-                  const int Wd, const float fovd )
-{
-    // Unwarp map_x, map_y, cir_mask
-    fish_2D_map(map_x, map_y, Hs, Ws, Hd, Wd, fovd);
+FisheyeStitcher::init() 
+//FisheyeStitcher::init( cv::Mat &map_x, cv::Mat &map_y, cv::Mat &cir_mask, 
+//                  cv::Mat &scale_map, cv::Mat &m_mls_map_x, cv::Mat &m_mls_map_y,
+//                  cv::Mat &binary_mask, std::vector<int> &m_blend_post,
+//                  int Hs, const int Ws, const int Hd, 
+//                  const int Wd, const float fovd )
+{ 
+    // TODO: remove 1 line below:
+    // CV_Assert( (m_hs % 2 == 0) && (m_ws % 2 == 0) );
 
-    CV_Assert( (Hs % 2 == 0) && (Ws % 2 == 0) );
+    //------------------------------------------------------------------------//
+    // Create deformation maps                                                //
+    //------------------------------------------------------------------------//
+    std::tie(m_map_x, m_map_y) = fish2Map();
 
-    // Create Circular mask to Crop the input W.R.T FOVD 
+    //------------------------------------------------------------------------//
+    // Create Circular mask to Crop the input W.R.T FOVD                      //
+    //------------------------------------------------------------------------//
     // (mask all data outside the FOVD circle)
-    Mat inner_cir_mask;
-    double inner_fovd = 183.0;
-    createMask(Ws, Hs, inner_fovd, cir_mask, inner_cir_mask);
+    // cv::Mat inner_cir_mask;
+    // double inner_fovd = 183.0;
+    std::tie(m_cir_mask, m_inner_cir_mask) = createMask();
 
-    fish_create_blend_mask( cir_mask, inner_cir_mask, Ws, Hs, Wd, Hd, 
-                      map_x, map_y, binary_mask, blend_post );
+    //------------------------------------------------------------------------//
+    // Creat masks that used in blending the deformed images                  //
+    //------------------------------------------------------------------------//
+    createBlendMask();
+    // createBlendMask( cir_mask, inner_cir_mask, Ws, Hs, Wd, Hd, 
+    //                   map_x, map_y, binary_mask, m_blend_post );
 
-    // Scale_Map Reconstruction for Fisheye Light Fall-off Compensation
-    int H = Hs;
-    int W = Ws;
-    int W_ = W / 2;
-    Mat x_coor = Mat::zeros(1, W_, CV_32F);
-    Mat temp(x_coor.size(), x_coor.type());
+    //------------------------------------------------------------------------//
+    // Create scale_map for fisheye light fall-off compensation               //
+    //------------------------------------------------------------------------//
+    m_scale_map = genScaleMap();
 
-    for (int i = 0; i < W_; ++i)
-    {
-        x_coor.at<float>(0, i) = i;
-    }
-
-    //  R_pf = P1_ * (x_coor.^5.0) + P2_ * (x_coor.^4.0) + P3_ * (x_coor.^3.0) + 
-    //         P4_ * (x_coor.^2.0) + P5_ * x_coor + P6_;
-    Mat R_pf = Mat::zeros(x_coor.size(), x_coor.type());
-    cv::pow(x_coor, 5.0, temp);
-    R_pf = R_pf + P1_ * temp;
-    cv::pow(x_coor, 4.0, temp);
-    R_pf = R_pf + P2_ * temp;
-    cv::pow(x_coor, 3.0, temp);
-    R_pf = R_pf + P3_ * temp;
-    cv::pow(x_coor, 2.0, temp);
-    R_pf = R_pf + P4_ * temp;
-    R_pf = R_pf + P5_ * x_coor + P6_;
-    //
-    // PF_LUT
-    cv::divide(1, R_pf, R_pf); //element-wise inverse
-
-    // Generate Scale Map
-    compenMap(H, W, R_pf, scale_map);
-
-    // Rigid MLS Interp2 grids
-    //3840x1920 resolution (C200 video)
-    cv::FileStorage fs("./utils/grid_xd_yd_3840x1920.yml.gz", FileStorage::READ);
-    fs["Xd"] >> mls_map_x;
-    fs["Yd"] >> mls_map_y;
+    //------------------------------------------------------------------------//
+    // Parse rigid MLS interp grids                                           //
+    //------------------------------------------------------------------------//
+    // 3840x1920 resolution (C200 video)
+    cv::FileStorage fs("./utils/grid_xd_yd_3840x1920.yml.gz", 
+                       cv::FileStorage::READ);
+    fs["Xd"] >> m_mls_map_x;
+    fs["Yd"] >> m_mls_map_y;
     fs.release();
 
-} /* fish_common_init() */
+}   // init()
 
 
-/***************************************************************************************************
-*
-* Adaptive Alignment: Norm XCorr
-*    Input: Ref and Template images
-*    Output: matchLoc (matching location)
-*
-***************************************************************************************************/
+// 
+// @brief Adaptive Alignment: Norm XCorr
+// @param
+//    Ref and Template images (in)
+//    Matching location (out)
+//
 void 
-fish_norm_xcorr( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const char* img_window, 
-                bool disableDisplay )
+FisheyeStitcher::findMatchLoc( cv::Point2f &matchLoc, 
+                               const cv::Mat &Ref, 
+                               cv::Mat &Tmpl, 
+                               const std::string& img_window, 
+                               bool disable_display )
 {
     double tickStart, tickEnd, runTime;
-    Mat img = Ref;
-    Mat templ = Tmpl;
-    Mat img_display, result;
+    cv::Mat img = Ref;
+    cv::Mat templ = Tmpl;
+    cv::Mat img_display, result;
     img.copyTo(img_display);
     int result_cols = img.cols - templ.cols + 1;
     int result_rows = img.rows - templ.rows + 1;
@@ -408,16 +466,17 @@ fish_norm_xcorr( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const
     int match_method = CV_TM_CCORR_NORMED;
 
     // Match template
-    matchTemplate(img, templ, result, match_method);
-    normalize(result, result, 0, 1, NORM_MINMAX, -1, Mat());
+    cv::matchTemplate(img, templ, result, match_method);
+    cv::normalize(result, result, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 
     // Check for peak cross-correlation
-    double minVal; double maxVal; Point minLoc; Point maxLoc;
+    double minVal, maxVal; 
+    cv::Point minLoc, maxLoc;
 
-    //Point matchLoc;
-    minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, Mat());
+    // Point matchLoc;
+    cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, cv::Mat());
 
-    if (match_method == TM_SQDIFF || match_method == TM_SQDIFF_NORMED)
+    if (match_method == cv::TM_SQDIFF || match_method == cv::TM_SQDIFF_NORMED)
     {
         matchLoc = minLoc;
     }
@@ -426,30 +485,34 @@ fish_norm_xcorr( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const
         matchLoc = maxLoc;
     }
 
-    if (!disableDisplay)
+    if (!disable_display)
     {
-        rectangle(img_display, matchLoc, Point(matchLoc.x + templ.cols, matchLoc.y + templ.rows), 
-                  Scalar(0, 255, 0), 2, 8, 0);
-        Mat RefTemplCat;
+        cv::rectangle(img_display, matchLoc, 
+                      cv::Point(matchLoc.x + templ.cols, matchLoc.y + templ.rows), 
+                      cv::Scalar(0, 255, 0), 2, 8, 0);
+        cv::Mat RefTemplCat;
         cv::hconcat(img_display, Tmpl, RefTemplCat);
-        imshow(img_window, RefTemplCat);
+        cv::imshow(img_window, RefTemplCat);
     }
 
-} /* fish_norm_xcorr() */
+}   // findMatchLoc()
 
 
-/***************************************************************************************************
-*
-* Construct Control Points for Affine2D estimation
-*    Input: Matched Points in the template & ref
-*    Output: movingPoints & fixedPoints
-*
-***************************************************************************************************/
-void 
-fish_ctrl_points_construct( vector<Point2f> &movingPoints, vector<Point2f> &fixedPoints, 
-            const cv::Point2f &matchLocLeft, const cv::Point2f &matchLocRight, const int row_start, 
-            const int row_end, const int p_wid, const int p_x1, const int p_x2, const int p_x2_ref )
+// 
+// @brief Construct Control Points for Affine2D estimation
+// @param
+//    Matched Points in the template & ref (in)
+//    movingPoints & fixedPoints (out)
+// 
+std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f> > 
+FisheyeStitcher::createControlPoints( const cv::Point2f &matchLocLeft, 
+            const cv::Point2f &matchLocRight, const int row_start, 
+            const int row_end, const int p_wid, const int p_x1, 
+            const int p_x2, const int p_x2_ref )
 {
+    std::vector<cv::Point2f> movingPoints; 
+    std::vector<cv::Point2f> fixedPoints; 
+
     float x1 = matchLocLeft.x;
     float y1 = matchLocLeft.y;
     float x2 = matchLocRight.x;
@@ -483,147 +546,158 @@ fish_ctrl_points_construct( vector<Point2f> &movingPoints, vector<Point2f> &fixe
     fixedPoints.push_back(cv::Point2f(p_x2, row_end));            // pTmpl_23
     fixedPoints.push_back(cv::Point2f(p_x2 + p_wid, row_end));    // pTmpl_24
 
-} /* fish_ref_point_construct() */
+    return std::make_tuple(movingPoints, fixedPoints);
+}   // createControlPoints()
 
 
-/***************************************************************************************************
-*
-* Ramp Blending on the right patch
-*
-***************************************************************************************************/
-void 
-fish_blend_right( cv::Mat &bg, const cv::Mat &bg1, const cv::Mat &bg2 )
+// 
+// @brief Ramp blending on the right patch
+// 
+cv::Mat 
+FisheyeStitcher::blendRight( const cv::Mat &bg1, const cv::Mat &bg2 )
 {
     int h = bg1.size().height;
     int w = bg1.size().width;
-    Mat bg_ = Mat::zeros(bg1.size(), CV_32F);
+    cv::Mat bg_ = cv::Mat::zeros(bg1.size(), CV_32F);
     double alpha1, alpha2;
-    Mat bg1_, bg2_;
+    cv::Mat bg1_, bg2_;
     bg1.convertTo(bg1_, CV_32F);
     bg2.convertTo(bg2_, CV_32F);
     //
-    Mat bgr_bg[3], bgr_bg1[3], bgr_bg2[3];   //destination array
+    cv::Mat bgr_bg[3], bgr_bg1[3], bgr_bg2[3];   //destination array
     split(bg1_, bgr_bg1); //split source  
     split(bg2_, bgr_bg2); //split source  
     // 
-    bgr_bg[0] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
-    bgr_bg[1] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
-    bgr_bg[2] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
+    bgr_bg[0] = cv::Mat::zeros(bgr_bg1[1].size(), CV_32F);
+    bgr_bg[1] = cv::Mat::zeros(bgr_bg1[1].size(), CV_32F);
+    bgr_bg[2] = cv::Mat::zeros(bgr_bg1[1].size(), CV_32F);
 
     for (int r = 0; r < h; ++r)
     {
         for (int c = 0; c < w; ++c)
         {
             alpha1 = double(c) / double(w);
-            alpha2 = 1 - alpha1;
-            bgr_bg[0].at<float>(r, c) = alpha1*bgr_bg1[0].at<float>(r, c) + alpha2*bgr_bg2[0].at<float>(r, c);
-            bgr_bg[1].at<float>(r, c) = alpha1*bgr_bg1[1].at<float>(r, c) + alpha2*bgr_bg2[1].at<float>(r, c);
-            bgr_bg[2].at<float>(r, c) = alpha1*bgr_bg1[2].at<float>(r, c) + alpha2*bgr_bg2[2].at<float>(r, c);
+            alpha2 = 1.0 - alpha1;
+            bgr_bg[0].at<float>(r, c) = alpha1*bgr_bg1[0].at<float>(r, c) + 
+                                            alpha2*bgr_bg2[0].at<float>(r, c);
+            bgr_bg[1].at<float>(r, c) = alpha1*bgr_bg1[1].at<float>(r, c) + 
+                                            alpha2*bgr_bg2[1].at<float>(r, c);
+            bgr_bg[2].at<float>(r, c) = alpha1*bgr_bg1[2].at<float>(r, c) + 
+                                            alpha2*bgr_bg2[2].at<float>(r, c);
         }
     }
+    cv::Mat bg;
     cv::merge(bgr_bg, 3, bg);
     bg.convertTo(bg, CV_8U);
+    return bg;
 
-} /* fish_blend_right() */
+}   // blendRight()
 
 
-/***************************************************************************************************
-*
-* Ramp Blending on the left patch
-*
-***************************************************************************************************/
-void 
-fish_blend_left( cv::Mat &bg, const cv::Mat &bg1, const cv::Mat &bg2 )
+// 
+//  @brief Ramp blending on the left patch
+// 
+cv::Mat 
+FisheyeStitcher::blendLeft( const cv::Mat &bg1, const cv::Mat &bg2 )
 {
     int h = bg1.size().height;
     int w = bg1.size().width;
-    Mat bg_ = Mat::zeros(bg1.size(), CV_32F);
+    cv::Mat bg_ = cv::Mat::zeros(bg1.size(), CV_32F);
     double alpha1, alpha2;
-    Mat bg1_, bg2_;
+    cv::Mat bg1_, bg2_;
     bg1.convertTo(bg1_, CV_32F);
     bg2.convertTo(bg2_, CV_32F);
     // 
-    Mat bgr_bg[3], bgr_bg1[3], bgr_bg2[3];   //destination array
+    cv::Mat bgr_bg[3], bgr_bg1[3], bgr_bg2[3]; //destination array
     split(bg1_, bgr_bg1); //split source  
     split(bg2_, bgr_bg2); //split source  
     // 
-    bgr_bg[0] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
-    bgr_bg[1] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
-    bgr_bg[2] = Mat::zeros(bgr_bg1[1].size(), CV_32F);
+    bgr_bg[0] = cv::Mat::zeros(bgr_bg1[1].size(), CV_32F);
+    bgr_bg[1] = cv::Mat::zeros(bgr_bg1[1].size(), CV_32F);
+    bgr_bg[2] = cv::Mat::zeros(bgr_bg1[1].size(), CV_32F);
 
     for (int r = 0; r < h; ++r)
     {
         for (int c = 0; c < w; ++c)
         {
             alpha1 = (double(w) - c + 1) / double(w);
-            alpha2 = 1 - alpha1;
-            bgr_bg[0].at<float>(r, c) = alpha1*bgr_bg1[0].at<float>(r, c) + alpha2*bgr_bg2[0].at<float>(r, c);
-            bgr_bg[1].at<float>(r, c) = alpha1*bgr_bg1[1].at<float>(r, c) + alpha2*bgr_bg2[1].at<float>(r, c);
-            bgr_bg[2].at<float>(r, c) = alpha1*bgr_bg1[2].at<float>(r, c) + alpha2*bgr_bg2[2].at<float>(r, c);
+            alpha2 = 1.0 - alpha1;
+            bgr_bg[0].at<float>(r, c) = alpha1*bgr_bg1[0].at<float>(r, c) + 
+                                            alpha2*bgr_bg2[0].at<float>(r, c);
+            bgr_bg[1].at<float>(r, c) = alpha1*bgr_bg1[1].at<float>(r, c) + 
+                                            alpha2*bgr_bg2[1].at<float>(r, c);
+            bgr_bg[2].at<float>(r, c) = alpha1*bgr_bg1[2].at<float>(r, c) + 
+                                            alpha2*bgr_bg2[2].at<float>(r, c);
         }
     }
+    cv::Mat bg;
     cv::merge(bgr_bg, 3, bg);
     bg.convertTo(bg, CV_8U);
+    return bg;
 
-} /* fish_blend_left() */
+}   // blendLeft()
 
 
-/***************************************************************************************************
-*
-* Blending aligned images
-*    Input: aligned images
-*    Output: blended pano
-*
-***************************************************************************************************/
-void 
-fish_blend( const cv::Mat &left_img, const cv::Mat &right_img_aligned, cv::Mat &pano,
-            const cv::Mat &binary_mask, const std::vector<int> &blend_post )
-{ 
+// 
+// @brief Blending aligned images
+// @param
+//    left unwarped image (in)
+//    aligned right image (in)
+//    blended image (out)
+// 
+cv::Mat
+FisheyeStitcher::blend( const cv::Mat &left_img, 
+                        const cv::Mat &right_img_aligned )
+{
 #if GEAR360_C200
-    Mat post;
+    cv::Mat post;
     // Read YML
-    cv::FileStorage fs("./utils/post_find.yml", FileStorage::READ);
+    cv::FileStorage fs("./utils/post_find.yml", cv::FileStorage::READ);
     fs["post_ret"] >> post; // 1772 x 1
     fs.release();
-
     // Mask
-    Mat mask = imread("./utils/mask_1920x1920_fovd_187.jpg", IMREAD_COLOR);
+    cv::Mat mask = imread("./utils/mask_1920x1920_fovd_187.jpg", cv::IMREAD_COLOR);
 #else 
-    // use `blend_post` instead of `post`
-    // use `binary_mask` instead of `mask` from file
-    Mat mask = binary_mask;
+    // use `m_blend_post` instead of `post`
+    // use `m_binary_mask` instead of `mask` from file
+    cv::Mat mask = m_binary_mask;
 #endif
     int H = mask.size().height;
     int W = mask.size().width;
 
-    int Worg = 1920;
+    //-----------------------------------------------------------------------//
+    // Prepare 2 blending patches                                            //
+    //-----------------------------------------------------------------------//
+    // int Worg = 1920;
+    int Worg = m_ws;
     int imH = left_img.size().height;
     int imW = left_img.size().width;
-    Mat left_img_cr = left_img(Rect(imW / 2 + 1 - Worg / 2, 0, Worg, imH));
-    int  sideW = 45;
-    Mat left_blend, right_blend;
+    cv::Mat left_img_cr = left_img(cv::Rect(imW / 2 + 1 - Worg / 2, 0, Worg, imH));
+
+    int sideW = 45; // width in pixels
+    cv::Mat left_blend, right_blend;
 
     for (int r = 0; r < H; ++r)
     {
 #if GEAR360_C200 
         int p = post.at<float>(r, 0);
 #else
-        int p = blend_post[r];
+        int p = m_blend_post[r];
 #endif
         if (p == 0)
         {
             continue;
         }
         // Left boundary
-        Mat lf_win_1 = left_img_cr(Rect(p - sideW, r, 2 * sideW, 1));
-        Mat rt_win_1 = right_img_aligned(Rect(p - sideW, r, 2 * sideW, 1));
+        cv::Mat lf_win_1 = left_img_cr(cv::Rect(p - sideW, r, 2 * sideW, 1));
+        cv::Mat rt_win_1 = right_img_aligned(cv::Rect(p - sideW, r, 2 * sideW, 1));
         // Right boundary
-        Mat lf_win_2 = left_img_cr(Rect((W - p - sideW), r, 2 * sideW, 1));
-        Mat rt_win_2 = right_img_aligned(Rect((W - p - sideW), r, 2 * sideW, 1));
+        cv::Mat lf_win_2 = left_img_cr(cv::Rect((W - p - sideW), r, 2 * sideW, 1));
+        cv::Mat rt_win_2 = right_img_aligned(cv::Rect((W - p - sideW), r, 2 * sideW, 1));
         // Blend(ramp)
-        Mat bleft, bright;
-        fish_blend_left(bleft, lf_win_1, rt_win_1);
-        fish_blend_right(bright, lf_win_2, rt_win_2);
+        cv::Mat bleft, bright;
+        bleft  = blendLeft(lf_win_1, rt_win_1);
+        bright = blendRight(lf_win_2, rt_win_2);
         // Update left boundary
         bleft.copyTo(lf_win_1);
         bleft.copyTo(rt_win_1);
@@ -633,61 +707,69 @@ fish_blend( const cv::Mat &left_img, const cv::Mat &right_img_aligned, cv::Mat &
     }
 
 #if MY_DEBUG
-    imwrite("left_crop_blend.jpg", left_img_cr);
-    imwrite("right_blend.jpg", right_img_aligned);
+    cv::imwrite("left_crop_blend.jpg", left_img_cr);
+    cv::imwrite("right_blend.jpg", right_img_aligned);
 #endif
 
-    // BLENDING
-    Mat mask_ = mask(Rect(0, 0, mask.size().width, mask.size().height - 2));
-    Mat mask_n;
+    //-----------------------------------------------------------------------//
+    // Blending                                                              //
+    //-----------------------------------------------------------------------//
+    cv::Mat mask_ = mask(cv::Rect(0, 0, mask.size().width, 
+                                        mask.size().height - 2));
+    cv::Mat mask_n;
     bitwise_not(mask_, mask_n);
     bitwise_and(left_img_cr, mask_, left_img_cr); // Left image
     // 
-    Mat temp1 = left_img(Rect(0, 0, (imW / 2 - Worg / 2), imH));
-    Mat temp2 = left_img(Rect((imW / 2 + Worg / 2), 0, (imW / 2 - Worg / 2), imH));
-    Mat t;
+    cv::Mat temp1 = left_img(cv::Rect(0, 0, (imW / 2 - Worg / 2), imH));
+    cv::Mat temp2 = left_img(cv::Rect((imW / 2 + Worg / 2), 0, 
+                                      (imW / 2 - Worg / 2), imH));
+    cv::Mat t;
     cv::hconcat(temp1, left_img_cr, t);
     cv::hconcat(t, temp2, left_img);
     // 
     bitwise_and(right_img_aligned, mask_n, right_img_aligned); // Right image
     //
+    cv::Mat pano;
     pano = left_img;
-    Mat temp = pano(Rect((imW / 2 - Worg / 2), 0, Worg, imH));
-    Mat t2;
-    bitwise_or(temp, right_img_aligned, t2);
+    cv::Mat temp = pano(cv::Rect((imW / 2 - Worg / 2), 0, Worg, imH));
+    cv::Mat t2;
+    cv::bitwise_or(temp, right_img_aligned, t2);
     t2.copyTo(temp); // updated pano
 
-} /* fish_blend() */
+    return pano;
+
+}   // blend()
 
 
-/***************************************************************************************************
-*
-* Single frame stitch
-*
-****************************************************************************************************/
-void 
-fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::Mat &cir_mask, 
-        cv::Mat &scale_map, const cv::Mat &map_x, const cv::Mat &map_y, const cv::Mat &mls_map_x, 
-        const cv::Mat &mls_map_y, const int Hs, const int Ws, const int Hd, const int Wd, 
-        const int W_in, const bool disable_light_compen, const bool disable_refine_align,
-        const Mat &binary_mask, const std::vector<int> &blend_post )
+//
+// @brief single frame stitching
+//
+cv::Mat
+FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
+// void 
+// fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::Mat &cir_mask, 
+//         cv::Mat &scale_map, const cv::Mat &map_x, const cv::Mat &map_y, const cv::Mat &m_mls_map_x, 
+//         const cv::Mat &m_mls_map_y, const int Hs, const int Ws, const int Hd, const int Wd, 
+//         const int W_in, const bool disable_light_compen, const bool disable_refine_align,
+//         const Mat &binary_mask, const std::vector<int> &m_blend_post )
 {
-    Mat left_unwarped, right_unwarped;
+    int W_in = 1920; // default: video 3840 x 1920
+    cv::Mat left_unwarped, right_unwarped;
     double tickStart, tickEnd, runTime;
 
 #if PROFILING
-    tickStart = double(getTickCount());
+    tickStart = double(cv::getTickCount());
 #endif
 
     //--------------------------------------------------------------------------
     // Circular Crop
     //--------------------------------------------------------------------------
-    bitwise_and(in_img_L, cir_mask, in_img_L); // Left image
-    bitwise_and(in_img_R, cir_mask, in_img_R); // Right image
+    cv::bitwise_and(in_img_L, m_cir_mask, in_img_L); // Left image
+    cv::bitwise_and(in_img_R, m_cir_mask, in_img_R); // Right image
 
 #if PROFILING
-    tickEnd = double(getTickCount());
-    runTime = (tickEnd - tickStart) / getTickFrequency();
+    tickEnd = double(cv::getTickCount());
+    runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (Crop) = " << runTime << " (sec)" << "\n";
 #endif
@@ -695,370 +777,185 @@ fish_stitch_one( cv::Mat &pano, cv::Mat &in_img_L, cv::Mat &in_img_R, const cv::
     //--------------------------------------------------------------------------
     // Light Fall-off Compensation
     //--------------------------------------------------------------------------
-    Mat left_img_compensated(in_img_L.size(), in_img_L.type());
-    Mat right_img_compensated(in_img_R.size(), in_img_R.type());
-    if (disable_light_compen)
+    cv::Mat left_img_compensated(in_img_L.size(), in_img_L.type());
+    cv::Mat right_img_compensated(in_img_R.size(), in_img_R.type());
+    if (!m_enb_light_compen) // skip LFOC
     {
-        left_img_compensated = in_img_L;
+        left_img_compensated  = in_img_L;
         right_img_compensated = in_img_R;
     }
     else
     {
-        compenLightFO(left_img_compensated, in_img_L, scale_map);
-        compenLightFO(right_img_compensated, in_img_R, scale_map);
+       left_img_compensated  = compenLightFO(in_img_L);
+       right_img_compensated = compenLightFO(in_img_R);
     }
 
 #if PROFILING
-    tickEnd = double(getTickCount());
-    runTime = (tickEnd - tickStart) / getTickFrequency();
+    tickEnd = double(cv::getTickCount());
+    runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (LightCompen) = " << runTime << " (sec)" << "\n";
 #endif
 
-    //--------------------------------------------------------------------------
-    // Fisheye Unwarping
-    //--------------------------------------------------------------------------
-    fish_unwarp(map_x, map_y, left_img_compensated, left_unwarped);
-    fish_unwarp(map_x, map_y, right_img_compensated, right_unwarped);
+    //------------------------------------------------------------------------//
+    // Fisheye Unwarping                                                      //
+    //------------------------------------------------------------------------//
+    left_unwarped  = unwarp(left_img_compensated);
+    right_unwarped = unwarp(right_img_compensated);
 
 #if PROFILING
-    tickEnd = double(getTickCount());
-    runTime = (tickEnd - tickStart) / getTickFrequency();
+    tickEnd = double(cv::getTickCount());
+    runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (Unwarp) = " << runTime << " (sec)" << "\n";
 #endif
 
 #if MY_DEBUG
-    imwrite("l.jpg", left_unwarped);
-    imwrite("r.jpg", right_unwarped);
+    cv::imwrite("l.jpg", left_unwarped);
+    cv::imwrite("r.jpg", right_unwarped);
 #endif
 
 #if PROFILING
-    tickStart = double(getTickCount());
+    tickStart = double(cv::getTickCount());
 #endif
 
-    //--------------------------------------------------------------------------
-    // Rigid Moving Least Squares Deformation
-    //--------------------------------------------------------------------------
-    Mat rightImg_crop, rightImg_mls_deformed;
-    rightImg_crop = right_unwarped(Rect(int(Wd / 2) - (W_in / 2), 0, W_in, Hd - 2)); // notice on (Hd-2) --> become: (Hd)
-    deform(mls_map_x, mls_map_y, rightImg_crop, rightImg_mls_deformed);
+    //------------------------------------------------------------------------//
+    // Rigid Moving Least Squares Deformation                                 //
+    //------------------------------------------------------------------------//
+    cv::Mat rightImg_crop, rightImg_mls_deformed;
+    rightImg_crop = right_unwarped(cv::Rect(int(m_wd / 2) - (W_in / 2), 0, 
+                                   W_in, m_hd - 2)); // notice on (Hd-2) --> become: (Hd)
+    rightImg_mls_deformed = deform(rightImg_crop);
 
 #if PROFILING
-    tickEnd = double(getTickCount());
-    runTime = (tickEnd - tickStart) / getTickFrequency();
+    tickEnd = double(cv::getTickCount());
+    runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (MLS Deform) = " << runTime << " (sec)" << "\n";
 #endif
 
-    //--------------------------------------------------------------------------
-    // Rearrange Image for Adaptive Alignment
-    //--------------------------------------------------------------------------
-    Mat temp1 = left_unwarped(Rect(0, 0, int(Wd / 2), Hd - 2));
-    Mat temp2 = left_unwarped(Rect(int(Wd / 2), 0, int(Wd / 2), Hd - 2));
-    Mat left_unwarped_arr; // re-arranged left unwarped
+    //------------------------------------------------------------------------//
+    // Rearrange Image for Adaptive Alignment                                 //
+    //------------------------------------------------------------------------//
+    cv::Mat temp1 = left_unwarped(cv::Rect(0, 0, int(m_wd / 2), m_hd - 2));
+    cv::Mat temp2 = left_unwarped(cv::Rect(int(m_wd / 2), 0, int(m_wd / 2), 
+                                  m_hd - 2));
+    cv::Mat left_unwarped_arr; // re-arranged left unwarped
     cv::hconcat(temp2, temp1, left_unwarped_arr);
-    Mat leftImg_crop;
-    leftImg_crop = left_unwarped_arr(Rect(int(Wd / 2) - (W_in / 2), 0, W_in, Hd - 2)); 
-    uint16_t crop = uint16_t(0.5 * Ws * (195.0 - 180.0) / 195.0); // half overlap region
+    cv::Mat leftImg_crop;
+    leftImg_crop = left_unwarped_arr(cv::Rect(int(m_wd / 2) - (W_in / 2), 0, 
+                                     W_in, m_hd - 2)); 
+    uint16_t crop = static_cast<uint16_t>(0.5 * m_ws * (195.0 - 180.0) / 195.0); // half overlap region
 
-    //--------------------------------------------------------------------------
-    // PARAMETERS (hard-coded) for C200 videos 
-    //--------------------------------------------------------------------------
-    uint16_t p_wid = 55;
-    uint16_t p_x1 = 90 - 15;
-    uint16_t p_x2 = 1780 - 5;
-    uint16_t p_x1_ref = 2 * crop;
+    //------------------------------------------------------------------------//
+    // PARAMETERS (hard-coded) for C200 videos                                //
+    //------------------------------------------------------------------------//
+    uint16_t p_wid     = 55;
+    uint16_t p_x1      = 90 - 15;
+    uint16_t p_x2      = 1780 - 5;
+    uint16_t p_x1_ref  = 2 * crop;
     uint16_t row_start = 590;
-    uint16_t row_end = 1320;
-    uint16_t p_x2_ref = Ws - 2 * crop + 1;
+    uint16_t row_end   = 1320;
+    uint16_t p_x2_ref  = m_ws - 2 * crop + 1;
     // 
-    Mat Ref_1, Ref_2, Tmpl_1, Tmpl_2;
-    Ref_1  = leftImg_crop(Rect(0, row_start, p_x1_ref, row_end - row_start));
-    Ref_2  = leftImg_crop(Rect(p_x2_ref, row_start, Ws - p_x2_ref, row_end - row_start));
-    Tmpl_1 = rightImg_mls_deformed(Rect(p_x1, row_start, p_wid, row_end - row_start));
-    Tmpl_2 = rightImg_mls_deformed(Rect(p_x2, row_start, p_wid, row_end - row_start));
+    cv::Mat Ref_1, Ref_2, Tmpl_1, Tmpl_2;
+    Ref_1  = leftImg_crop(cv::Rect(0, row_start, p_x1_ref, row_end - row_start));
+    Ref_2  = leftImg_crop(cv::Rect(p_x2_ref, row_start, m_ws - p_x2_ref, row_end - row_start));
+    Tmpl_1 = rightImg_mls_deformed(cv::Rect(p_x1, row_start, p_wid, row_end - row_start));
+    Tmpl_2 = rightImg_mls_deformed(cv::Rect(p_x2, row_start, p_wid, row_end - row_start));
 
 #if MY_DEBUG
-    imwrite("./output/Ref_1.jpg", Ref_1);
-    imwrite("./output/Ref_2.jpg", Ref_2);
-    imwrite("./output/Tmpl_1.jpg", Tmpl_1);
-    imwrite("./output/Tmpl_2.jpg", Tmpl_2);
-#endif
+    cv::imwrite("./output/Ref_1.jpg", Ref_1);
+    cv::imwrite("./output/Ref_2.jpg", Ref_2);
+    cv::imwrite("./output/Tmpl_1.jpg", Tmpl_1);
+    cv::imwrite("./output/Tmpl_2.jpg", Tmpl_2);
+#endif 
 
-
-    //--------------------------------------------------------------------------
-    // Adaptive Alignment (Norm XCorr)
-    //--------------------------------------------------------------------------
-    bool disableDisplay = 1;   // 1: display off, 0: display on
-    const char* name_bound_1 = "Matching On Left Boundary";
-    const char* name_bound_2 = "Matching On Right Boundary";
+    //------------------------------------------------------------------------//
+    // Adaptive Alignment (Norm XCorr)                                        //
+    //------------------------------------------------------------------------//
+    bool disable_display = 1;   // 1: display off, 0: display on
+    std::string name_bound_1 = "Matching On Left Boundary";
+    std::string name_bound_2 = "Matching On Right Boundary";
 
 #if PROFILING
-    tickStart = double(getTickCount());
+    tickStart = double(cv::getTickCount());
 #endif
 
     cv::Mat warpedRightImg;
-    if (disable_refine_align)
+    if (!m_enb_refine_align) // skip
     {
         warpedRightImg = rightImg_mls_deformed;
     }
     else
     {
-        //--------------------------------------------------------------
-        // Normalized XCorr
-        //--------------------------------------------------------------
+        //--------------------------------------------------------------------//
+        // Find matching location (normalized XCorr)                          //
+        //--------------------------------------------------------------------//
         cv::Point2f matchLocLeft, matchLocRight;
-        fish_norm_xcorr(matchLocLeft, Ref_1, Tmpl_1, name_bound_1, disableDisplay); // Left boundary
-        fish_norm_xcorr(matchLocRight, Ref_2, Tmpl_2, name_bound_2, disableDisplay); // Right boundary
+        findMatchLoc(matchLocLeft , Ref_1, Tmpl_1, name_bound_1, disable_display); // Left boundary
+        findMatchLoc(matchLocRight, Ref_2, Tmpl_2, name_bound_2, disable_display); // Right boundary
 
 #if MY_DEBUG
-        cout << "matchLocLeft(x=" << matchLocLeft.x << ", y=" << matchLocLeft.y << "), matchLocRight(x=" << matchLocRight.x << ", y=" << matchLocRight.y << ")\n";
+        std::cout << "matchLocLeft(x=" << matchLocLeft.x << ", y=" << matchLocLeft.y 
+                  << "), matchLocRight(x=" << matchLocRight.x 
+                  << ", y=" << matchLocRight.y << ")\n";
 #endif
 
-        vector<Point2f> movingPoints;  // matched points in Refs  
-        vector<Point2f> fixedPoints;   // matched points in Templates
+        std::vector<cv::Point2f> movingPoints;  // matched points in Refs  
+        std::vector<cv::Point2f> fixedPoints;   // matched points in Templates
 
-        //--------------------------------------------------------------
-        // Construct control points for estimation
-        //--------------------------------------------------------------
-        fish_ctrl_points_construct(movingPoints, fixedPoints, matchLocLeft, matchLocRight, row_start, row_end, p_wid, p_x1, p_x2, p_x2_ref);
+        //--------------------------------------------------------------------//
+        // Construct control points for estimation                            //
+        //--------------------------------------------------------------------//
+        std::tie(movingPoints, fixedPoints) = 
+            createControlPoints(matchLocLeft, matchLocRight, row_start, row_end, 
+                                p_wid, p_x1, p_x2, p_x2_ref);
 
 #if PROFILING
-        tickEnd = double(getTickCount());
-        runTime = (tickEnd - tickStart) / getTickFrequency();
+        tickEnd = double(std::getTickCount());
+        runTime = (tickEnd - tickStart) / std::getTickFrequency();
         tickStart = tickEnd;
         std::cout << "run-time (Xcorr & fitGeoTrans) = " << runTime << " (sec)" << "\n";
 #endif
 
         cv::Mat tform_refine_mat;
-        //--------------------------------------------------------------
-        // Estimate affine matrix
-        //--------------------------------------------------------------
+        //--------------------------------------------------------------------//
+        // Estimate affine matrix                                             //
+        //--------------------------------------------------------------------//
         tform_refine_mat = cv::findHomography(fixedPoints, movingPoints, 0);
 
-        //--------------------------------------------------------------
-        // Warp Image
-        //--------------------------------------------------------------
-        cv::warpPerspective(rightImg_mls_deformed, warpedRightImg, tform_refine_mat, 
-                            rightImg_mls_deformed.size(), INTER_LINEAR);
+        //--------------------------------------------------------------------//
+        // Warp Image                                                         //
+        //--------------------------------------------------------------------//
+        cv::warpPerspective(rightImg_mls_deformed, warpedRightImg, 
+                            tform_refine_mat, rightImg_mls_deformed.size(), 
+                            CV_INTER_LINEAR);
 
 #if PROFILING
-        tickEnd = double(getTickCount());
-        runTime = (tickEnd - tickStart) / getTickFrequency();
+        tickEnd = double(cv::getTickCount());
+        runTime = (tickEnd - tickStart) / cv::getTickFrequency();
         tickStart = tickEnd;
         std::cout << "run-time (estimate tform_mat & warping) = " << runTime << " (sec)" << "\n";
 #endif
 
     } // Normalized xcorr
 
-    //--------------------------------------------------------------
-    // Blend Images
-    //--------------------------------------------------------------
-    fish_blend(left_unwarped_arr, warpedRightImg, pano, binary_mask, blend_post);
+    //-----------------------------------------------------------------------//
+    // Blend Images                                                          //
+    //-----------------------------------------------------------------------//
+    cv::Mat pano;
+    pano = blend(left_unwarped_arr, warpedRightImg);
 
 #if PROFILING
-    tickEnd = double(getTickCount());
-    runTime = (tickEnd - tickStart) / getTickFrequency();
+    tickEnd = double(cv::getTickCount());
+    runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (Blending) = " << runTime << " (sec)" << "\n";
 #endif
 
-} /* fish_stitch_one() */
+    return pano;
 
-
-// int 
-// main( int argc, char** argv )
-// {
-//     // default values
-//     string img_name, in_dir_name, in_img_name, in_name_L, in_name_R, out_dir_name;
-//     string video_path = "";
-//     float  fovd = 195.0f;
-//     bool   disable_light_compen = true;
-//     bool   disable_refine_align = true;
-//     int    fr_from = 1;
-//     int    fr_to = 1;
-//     int    W_in = 1920; // default: video 3840x1920
-//     int    image_height = 1920;
-//     int    image_width = 3840;
-// 
-//     if (argc == 1)
-//     {
-//         cout << "Wrong arguments\n";
-//         return -1;
-//     }
-// 
-//     for (int i = 1; i < argc; ++i)
-//     {
-//         if (string(argv[i]) == "--video_in")
-//         {
-//             video_path = argv[i + 1];
-//             i++;
-//         }
-//         else if (string(argv[i]) == "--height")
-//         {
-//             image_height = (float)atof(argv[i + 1]);
-//             i++;
-//         }
-//         else if (string(argv[i]) == "--width")
-//         {
-//             image_width = (float)atof(argv[i + 1]);
-//             i++;
-//         }
-//         else if (string(argv[i]) == "--fovd")
-//         {
-//             fovd = (float)atof(argv[i + 1]);
-//             i++;
-//         }
-//         else if (string(argv[i]) == "--enable_light_compen")
-//         {
-//             disable_light_compen = false;
-//         }
-//         else if (string(argv[i]) == "--enable_refine_align")
-//         {
-//             disable_refine_align = false;
-//         }
-//         else
-//             ;
-//     }
-// 
-//     string out_name_L, out_name_R;
-//     Mat in_img, in_img_L, in_img_R;
-//     double endTime;
-//     double totalTime;
-// 
-//     //**************************************************************************
-//     // PreComputation
-//     //**************************************************************************
-//      
-//     cout << "FishEye  --in_dir " << in_dir_name.c_str() << "  --in_img " << in_img_name.c_str() 
-//          << "  --out " << out_dir_name.c_str() << "  --fovd " << fovd << "  --fr_from " << fr_from 
-//          << "  --fr_to " << fr_to 
-//          << "  --enable_light_compen " << !disable_light_compen 
-//          << "  --enable_refine_align " << !disable_refine_align
-//          << "\n";
-// 
-//     int Worg = image_width;
-//     int Horg = image_height;
-//     // Source image
-//     int Ws = int(Worg / 2);
-//     int Hs = Horg;
-//     // Destination pano
-//     int Wd = int(Ws * 360.0 / MAX_FOVD);
-//     int Hd = int(Wd / 2);
-// 
-//     //--------------------------------------------------------------------------
-//     // Initialization of all precomputed data
-//     //--------------------------------------------------------------------------
-//     std::cout << "Fisheye Stitcher Initialization..\n";
-//     //
-//     Mat map_x(Hd, Wd, CV_32FC1);
-//     Mat map_y(Hd, Wd, CV_32FC1);
-//     Mat cir_mask;
-//     Mat scale_map(Hs, Ws, CV_32F);
-//     Mat mls_map_x, mls_map_y;
-//     Mat binary_mask;             // blending
-//     std::vector<int> blend_post; // blending
-//     //
-//     fish_common_init(map_x, map_y, cir_mask, scale_map, mls_map_x, mls_map_y, 
-//                      binary_mask, blend_post, Hs, Ws, Hd, Wd, 195);
-//     // 
-//     in_img.release(); 
-// 
-//     // Video input 
-//     VideoCapture VCap( video_path );
-//     if( !VCap.isOpened() )
-//     {
-//         CV_Error_(Error::StsBadArg, ("Error opening video: %s",
-//                     video_path.c_str()));
-//     } 
-//     int    frame_fps      = VCap.get(CAP_PROP_FPS);
-//     int    frame_width    = VCap.get(CAP_PROP_FRAME_WIDTH);
-//     int    frame_height   = VCap.get(CAP_PROP_FRAME_HEIGHT);
-//     string video_out_name = "stitched_video.avi";
-// 
-//     // Video output
-//     cv::VideoWriter VOut;
-//     VOut.open( video_out_name, VideoWriter::fourcc('X','2','6','4'),
-//                frame_fps, Size(Wd, Hd-2) );
-//     if( !VOut.isOpened() )
-//     {
-//         CV_Error_(Error::StsBadArg, 
-//                   ("Error opening video: %s", video_out_name.c_str()));
-//     } 
-//     cv::Mat pano;
-// 
-//     //--------------------------------------------------------------------------
-//     // Read frames and process
-//     //--------------------------------------------------------------------------
-//     int count = 0;
-//     Mat img;
-// 
-//     double startTime = double(getTickCount()); // frame stitching starts 
-// 
-//     while( 1 )
-//     {
-//         VCap >> img;
-// 
-//         if( img.empty())
-//         {
-//             std::cout << "end of video\n";
-//             break;
-//         }
-// 
-//         Mat img_l, img_r;
-//         in_img_L = img(Rect(0, 0, Worg / 2, Horg));        // left fisheye
-//         in_img_R = img(Rect(Worg / 2, 0, Worg / 2, Horg)); // right fisheye
-// 
-// 
-//         double startOneFrTime = double(getTickCount()); // frame stitching starts
-// 
-//         //--------------------------------------------------------------
-//         // Stitch
-//         //--------------------------------------------------------------
-//         fish_stitch_one(pano, in_img_L, in_img_R, cir_mask, scale_map, 
-//                         map_x, map_y, mls_map_x, mls_map_y, Hs, Ws, Hd, Wd, 
-//                         W_in, disable_light_compen, disable_refine_align,
-//                         binary_mask, blend_post );
-// 
-//         // RunTime
-//         endTime = double(getTickCount());
-//         totalTime = (endTime - startOneFrTime) / getTickFrequency();
-//         std::cout << "Stitching frame: " << count << " (" << totalTime << " sec)\n";
-// 
-// #if PROFILING
-//         double tickStart = endTime; // previous count
-// #endif
-//         // cout << "size pano" << pano.size()
-//         VOut << pano;
-// 
-//         // Mat resize_pano(1920, 3840, pano.type());
-//         // resize(pano, resize_pano, resize_pano.size(), 0, 0, INTER_LINEAR);
-// 
-// #if PROFILING
-//         double tickEnd = double(getTickCount());
-//         double runTime = (tickEnd - tickStart) / getTickFrequency();
-//         tickStart = tickEnd;
-//         std::cout << "run-time (resize) = " << runTime << " (sec)" << "\n";
-// #endif
-//         count++;
-//     }
-//     VCap.release();
-//     VOut.release();
-// 
-//     std::cout << "Write to video [" 
-//          << Wd << "x" << Hd << "] @ " 
-//          << frame_fps << "fps  --> " 
-//          << video_out_name << "\n";
-// 
-//     // RunTime
-//     endTime = double(getTickCount());
-//     totalTime = (endTime - startTime) / getTickFrequency();
-//     std::cout << "Total time = " << totalTime / 60 << " min" 
-//               << " (" << totalTime << " sec)\n";
-// 
-//     return 0;
-// 
-// } /* main() */
+}   // stitch() 
 
 }   // namespace

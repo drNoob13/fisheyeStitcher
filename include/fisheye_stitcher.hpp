@@ -43,25 +43,57 @@ public:
     cv::Mat stitch(const cv::Mat& image1, const cv::Mat& image2);
 
 private:
-    cv::Mat fishUnwarp( const cv::Mat &map_x, const cv::Mat &map_y, 
-                         const cv::Mat &src );
-    std::tuple<double, double> fish2Eqt( double x_dest, double  y_dest, 
-                                         double W_rad );
+    cv::Mat unwarp(const cv::Mat &in_img);
+    std::tuple<double, double> fish2Eqt(const double x_dest, 
+                                        const double y_dest, 
+                                        const double W_rad);
     std::tuple<cv::Mat, cv::Mat> fish2Map();
     std::tuple<cv::Mat, cv::Mat> createMask();
-    cv::Mat deform( const cv::Mat &map_x, const cv::Mat &map_y, 
-                    const cv::Mat &src );
-    cv::Mat compenMap( const cv::Mat &R_pf );
+    cv::Mat deform( const cv::Mat &in_img);
+    cv::Mat genScaleMap();
+    cv::Mat compenLightFO(const cv::Mat &in_img);
+    void createBlendMask();
+    void init();
+
+    // TODO
+    void findMatchLoc( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const std::string& img_window,
+                bool disableDisplay );
+    //
+
+    std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f> > 
+        createControlPoints(const cv::Point2f &matchLocLeft, 
+            const cv::Point2f &matchLocRight, const int row_start, 
+            const int row_end, const int p_wid, const int p_x1, 
+            const int p_x2, const int p_x2_ref);
+
+    cv::Mat blendRight(const cv::Mat &bg1, const cv::Mat &bg2);
+    cv::Mat blendLeft(const cv::Mat &bg1, const cv::Mat &bg2);
+    cv::Mat blend(const cv::Mat &left_img, const cv::Mat &right_img_aligned);
+    cv::Mat stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R);
 
     //
-    int m_hs;
-    int m_ws;
+    int m_hs_org; // height of the input image (2xfisheyes), e.g. 1920
+    int m_ws_org; // width of the input image (2xfisheyes), e.g. 3840
+    int m_hs;     // height of one fisheye image, e.g. 1920
+    int m_ws;     // width of one fisheye image, e.g. 1920
     int m_hd;
     int m_wd;
     float m_in_fovd;
+    float m_inner_fovd; // used in creating mask
     bool m_enb_light_compen;
+    bool m_disable_light_compen;
     bool m_enb_refine_align;
-};
+    cv::Mat m_map_x; // used in deformation
+    cv::Mat m_map_y; // used in deformation
+    cv::Mat m_cir_mask;
+    cv::Mat m_inner_cir_mask;
+    cv::Mat m_binary_mask;
+    std::vector<int> m_blend_post;
+    cv::Mat m_scale_map;
+    cv::Mat m_mls_map_x;
+    cv::Mat m_mls_map_y;
+
+};  // class
 
 }   // namespace
 
