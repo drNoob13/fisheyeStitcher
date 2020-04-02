@@ -1,9 +1,9 @@
 //----------------------------------------------------------------------------//
+//                                                                            //
 // This file is part of the fisheye stitcher project.                         //
-// Author  : Tuan Phan Minh Ho (drnoob2013@gmail.com)                         //
-// Function: 360-degree Video Stitcher for Dual-fisheye Lens Camera           //
-// Support : Samsung Gear360 2016-model (C200)                                //
-// Source  : https://github.com/drNoob13/fisheyeStitcher                      //
+// Copyright (c) 2018-2020 Tuan Phan Minh Ho <drnoob2013@gmail.com>           //
+// https://github.com/drNoob13/fisheyeStitcher                                //
+//                                                                            //
 //----------------------------------------------------------------------------//
 #ifndef FISHEYE_STITCHER_HPP
 #define FISHEYE_STITCHER_HPP
@@ -37,7 +37,7 @@ namespace stitcher
 class FisheyeStitcher
 {
 public:
-    FisheyeStitcher(int width, int height, int in_fovd, 
+    FisheyeStitcher(int width, int height, float in_fovd, 
                     bool enb_light_compen, bool enb_refine_align);
     ~FisheyeStitcher();
     cv::Mat stitch(const cv::Mat& image1, const cv::Mat& image2);
@@ -47,18 +47,21 @@ private:
     std::tuple<double, double> fish2Eqt(const double x_dest, 
                                         const double y_dest, 
                                         const double W_rad);
-    std::tuple<cv::Mat, cv::Mat> fish2Map();
-    std::tuple<cv::Mat, cv::Mat> createMask();
+    // std::tuple<cv::Mat, cv::Mat> fish2Map();
+    // std::tuple<cv::Mat, cv::Mat> createMask();
+    // cv::Mat genScaleMap();
+    void fish2Map();
+    void createMask();
     cv::Mat deform( const cv::Mat &in_img);
-    cv::Mat genScaleMap();
+    void genScaleMap();
     cv::Mat compenLightFO(const cv::Mat &in_img);
     void createBlendMask();
     void init();
 
-    // TODO
-    void findMatchLoc( cv::Point2f &matchLoc, const cv::Mat &Ref, cv::Mat &Tmpl, const std::string& img_window,
-                bool disableDisplay );
-    //
+    cv::Point2f findMatchLoc(const cv::Mat &Ref, 
+                             const cv::Mat &Tmpl, 
+                             const std::string &img_window, 
+                             const bool disable_display);
 
     std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f> > 
         createControlPoints(const cv::Point2f &matchLocLeft, 
@@ -69,15 +72,15 @@ private:
     cv::Mat blendRight(const cv::Mat &bg1, const cv::Mat &bg2);
     cv::Mat blendLeft(const cv::Mat &bg1, const cv::Mat &bg2);
     cv::Mat blend(const cv::Mat &left_img, const cv::Mat &right_img_aligned);
-    cv::Mat stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R);
 
     //
     int m_hs_org; // height of the input image (2xfisheyes), e.g. 1920
     int m_ws_org; // width of the input image (2xfisheyes), e.g. 3840
     int m_hs;     // height of one fisheye image, e.g. 1920
     int m_ws;     // width of one fisheye image, e.g. 1920
-    int m_hd;
-    int m_wd;
+    int m_hd;     // height of destination pano image
+    int m_wd;     // width of destination pano image
+    int m_wd2;    // m_wd / 2.0
     float m_in_fovd;
     float m_inner_fovd; // used in creating mask
     bool m_enb_light_compen;

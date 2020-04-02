@@ -1,8 +1,8 @@
-//
-// This file is part of the fisheye stitcher project.
-// Tuan Ho
-// Function: Input parser 
-//
+/**
+ * Tuan Ho
+ * Function: Input parser 
+ * 
+*/
 #ifndef INPUT_PARSER_HPP
 #define INPUT_PARSER_HPP
 
@@ -16,11 +16,10 @@ class InputParser
 {
 public:
     InputParser(int argc, char **argv) 
-    :   m_img_path(std::string("nofile")), m_out_dir(std::string(" ")),
+      : m_img_path(std::string("nofile")), m_out_dir(std::string(" ")),
         m_corr_file(std::string("empty")), m_img_nm(std::string("empty")),
         m_ccalib_ed_l(std::string("nofile")),
         m_ccalib_ed_r(std::string("nofile")),
-        m_ext_file(std::string("nofile")),
         m_use_store_map(0), m_mode(std::string("image")),
         m_ed_map_l(std::string("empty")), m_ed_map_r(std::string("empty")),
         m_image_width(0), m_image_height(0), m_video_path("nofile")
@@ -53,6 +52,14 @@ public:
                 m_img_nm = argv[i + 1];
                 i++;
             }
+            else if (std::string(argv[i]) == "--enb_light_compen")
+            {
+                m_enb_light_compen = static_cast<bool>(atoi(argv[i + 1]));
+            }
+            else if (std::string(argv[i]) == "--enb_refine_align")
+            {
+                m_enb_refine_align = static_cast<bool>(atoi(argv[i + 1]));
+            }
             else if (std::string(argv[i]) == "--ccalib_ed_l")
             {
                 m_ccalib_ed_l = argv[i + 1];
@@ -61,11 +68,6 @@ public:
             else if (std::string(argv[i]) == "--ccalib_ed_r")
             {
                 m_ccalib_ed_r = argv[i + 1];
-                i++;
-            }
-            else if (std::string(argv[i]) == "--extrinsic")
-            {
-                m_ext_file = argv[i + 1];
                 i++;
             }
             else if (std::string(argv[i]) == "--ed_map_l")
@@ -149,22 +151,6 @@ public:
                   m_helper.c_str()));
         }
 
-        if (m_ccalib_ed_l == "nofile" || m_ccalib_ed_r == "nofile" ||
-            m_ext_file == "nofile")
-        {
-            CV_Error_(cv::Error::StsBadArg, 
-                ("FFStitcher: Please provide calibration parameter files. %s", 
-                  m_helper.c_str()));
-        }
-
-        if (m_use_store_map &&
-            (m_ed_map_l == "empty" || m_ed_map_r == "empty"))
-        {
-            CV_Error_(cv::Error::StsBadArg, 
-                ("FFStitcher: Please provide pre-calculated maps. %s", 
-                  m_helper.c_str()));
-        }
-
         if ((m_image_width == 0) || (m_image_height == 0) ||
             (m_image_width % 2 != 0) || (m_image_height % 2 != 0))
         {
@@ -192,7 +178,6 @@ public:
              << "img_path           : " << m_img_path      << "\n"
              << "ccalib_ed_l        : " << m_ccalib_ed_l   << "\n"
              << "ccalib_ed_r        : " << m_ccalib_ed_r   << "\n"
-             << "  --extrinsic      : " << m_ext_file      << "\n"
              << "\n";
     }
 
@@ -213,27 +198,30 @@ public:
            << "  --video_path      <your_path>/in_video.mp4               \\ \n"
            << "  --img_path        <your_path>/Mall_Nhung_0059.png        \\ \n"
            << "  --ccalib_ed_l     ../data/<calib_param_left_camera>.yaml \\ \n"
-           << "  --ccalib_ed_r     ../data/<calib_param_rght_camera>.yaml \\ \n"
-           << "  --extrinsic       ../data/extrinsic.yaml                    \n"
+           << "  --ccalib_ed_r     ../data/<calib_param_rght_camera>.yaml    \n"
            << "\n";
     }
 
-    std::string   imagePath()         const { return m_img_path;            }
-    std::string   imageName()         const { return m_img_nm;              }
-    std::string   outDir()            const { return m_out_dir;             }
-    std::string   edMapFileL()        const { return m_ed_map_l;            }
-    std::string   edMapFileR()        const { return m_ed_map_r;            }
-    std::string   videoPath()         const { return m_video_path;          }
-    std::string   edCalibParamFileL() const { return m_ccalib_ed_l;         }
-    std::string   edCalibParamFileR() const { return m_ccalib_ed_r;         }
-    std::string   mode()              const { return m_mode;                }     
-    bool          useStoredMap()      const { return m_use_store_map;       }
-    cv::Size      imageSize()         const { return cv::Size(m_image_width,
-                                                        m_image_height);    }
-    std::string   extFile()           const { return m_ext_file;            }
+    std::string   getImagePath()         const { return m_img_path;            }
+    std::string   getImageName()         const { return m_img_nm;              }
+    std::string   getOutDir()            const { return m_out_dir;             }
+    std::string   getEdMapFileL()        const { return m_ed_map_l;            }
+    std::string   getEdMapFileR()        const { return m_ed_map_r;            }
+    std::string   getVideoPath()         const { return m_video_path;          }
+    std::string   getEdCalibParamFileL() const { return m_ccalib_ed_l;         }
+    std::string   getEdCalibParamFileR() const { return m_ccalib_ed_r;         }
+    std::string   getMode()              const { return m_mode;                }     
+    bool          getUseStoredMap()      const { return m_use_store_map;       }
+    cv::Size      getImageSize()         const { return cv::Size(m_image_width,
+                                                           m_image_height);    }
+    bool          getFlagLightCompen()   const { return m_enb_light_compen;    }                                                       
+    bool          getFlagRefineAlign()   const { return m_enb_refine_align;    }
+
 
 private:
     bool          m_use_store_map;
+    bool          m_enb_light_compen;
+    bool          m_enb_refine_align;
     int           m_image_width;
     int           m_image_height;
     std::string   m_img_nm;
@@ -242,7 +230,6 @@ private:
     std::string   m_img_path;
     std::string   m_ccalib_ed_l;
     std::string   m_ccalib_ed_r;
-    std::string   m_ext_file;
     std::string   m_ed_map_l;
     std::string   m_ed_map_r;
     std::string   m_video_path;

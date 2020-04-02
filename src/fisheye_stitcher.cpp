@@ -1,10 +1,8 @@
 //----------------------------------------------------------------------------//
 //                                                                            //
 // This file is part of the fisheye stitcher project.                         //
-// Author  : Tuan Phan Minh Ho (drnoob2013@gmail.com)                         //
-// Function: 360-degree Video Stitcher for Dual-fisheye Lens Camera           //
-// Support : Samsung Gear360 2016-model (C200)                                //
-// Source  : https://github.com/drNoob13/fisheyeStitcher                      //
+// Copyright (c) 2018-2020 Tuan Phan Minh Ho <drnoob2013@gmail.com>           //
+// https://github.com/drNoob13/fisheyeStitcher                                //
 //                                                                            //
 //----------------------------------------------------------------------------//
 #include "fisheye_stitcher.hpp"
@@ -12,9 +10,9 @@
 namespace stitcher
 {
 
-FisheyeStitcher::FisheyeStitcher(int width, int height, int in_fovd, 
+FisheyeStitcher::FisheyeStitcher(int width, int height, float in_fovd, 
                                  bool enb_light_compen, bool enb_refine_align) 
-:   m_ws_org(width), m_hs_org(height), m_in_fovd(in_fovd), m_inner_fovd(183.0f),
+:   m_ws_org(width), m_hs_org(height), m_in_fovd(195.0f), m_inner_fovd(183.0f),
     m_enb_light_compen(enb_light_compen), m_enb_refine_align(enb_refine_align)
 { 
     CV_Assert( (width % 2 == 0) && (height % 2 == 0) );
@@ -25,6 +23,7 @@ FisheyeStitcher::FisheyeStitcher(int width, int height, int in_fovd,
     // Destination pano
     m_wd = static_cast<int>(m_ws * 360.0 / MAX_FOVD);
     m_hd = m_hs;
+    m_wd2 = static_cast<int>(m_wd / 2);
 
     init();
 }
@@ -33,11 +32,11 @@ FisheyeStitcher::~FisheyeStitcher()
 {
 }
 
-//
-// @brief: Fisheye Unwarping
-//
-//   Unwarp source fisheye -> 360x180 equirectangular
-//
+//! 
+//! @brief: Fisheye Unwarping
+//!
+//!   Unwarp source fisheye -> 360x180 equirectangular
+//!
 cv::Mat
 FisheyeStitcher::unwarp( const cv::Mat &src )
 {
@@ -48,9 +47,9 @@ FisheyeStitcher::unwarp( const cv::Mat &src )
 
 }   // unwarp()
 
-// 
-// @brief Convert fisheye-vertical to equirectangular (reference: Panotool)
-// 
+//! 
+//! @brief Convert fisheye-vertical to equirectangular (reference: Panotool)
+//! 
 std::tuple<double, double>  
 FisheyeStitcher::fish2Eqt( const double x_dest, const double y_dest, 
                            const double W_rad )
@@ -85,33 +84,35 @@ FisheyeStitcher::fish2Eqt( const double x_dest, const double y_dest,
 
 }   // fish2Eqt()
 
-// 
-// @brief Map 2D fisheye image to 2D projected sphere
-// @param
-//     map_x 
-//     map_y
-// 
-std::tuple<cv::Mat, cv::Mat>
+//! 
+//! @brief Map 2D fisheye image to 2D projected sphere
+//! @param  map_x output map for x element.
+//! @param  map_y output map for y element.
+//! 
+// std::tuple<cv::Mat, cv::Mat>
+void
 FisheyeStitcher::fish2Map()
 //remove void fish_2D_map( cv::Mat &map_x, cv::Mat &map_y, int Hs, int Ws, int Hd, int Wd, float in_fovd )
 {
     cv::Mat map_x(m_hd, m_wd, CV_32FC1);
     cv::Mat map_y(m_hd, m_wd, CV_32FC1);
-    static double w_rad = m_wd / (2 * CV_PI);
+    double w_rad = m_wd / (2.0 * CV_PI);
+    // TODO remove 1 line below
+    // static double w_rad = m_wd / (2 * CV_PI);
     double x_d, y_d; // dest
     double x_s, y_s; // source
-    double w2  = (double)m_wd / 2.0 - 0.5;
-    double h2  = (double)m_hd / 2.0 - 0.5;
-    double ws2 = (double)m_ws / 2.0 - 0.5;
-    double hs2 = (double)m_hs / 2.0 - 0.5;
+    double w2  = static_cast<double>(m_wd) / 2.0 - 0.5;
+    double h2  = static_cast<double>(m_hd) / 2.0 - 0.5;
+    double ws2 = static_cast<double>(m_ws) / 2.0 - 0.5;
+    double hs2 = static_cast<double>(m_hs) / 2.0 - 0.5;
 
     for (int y = 0; y < m_hd; ++y)
     {
         // y-coordinate in dest image relative to center
-        y_d = (double)y - h2;
+        y_d = static_cast<double>(y) - h2;
         for (int x = 0; x < m_hd; ++x)
         {
-            x_d = (double)x - w2;
+            x_d = static_cast<double>(x) - w2;
             // Convert fisheye coordinate to cartesian coordinate (equirectangular)
             std::tie(x_s, y_s) = fish2Eqt(x_d, y_d, w_rad);
             //remove fish2Eqt(x_d, y_d, &x_s, &y_s, W_rad);
@@ -119,58 +120,69 @@ FisheyeStitcher::fish2Map()
             x_s += ws2;
             y_s += hs2;
             // Create map
-            map_x.at<float>(y, x) = float(x_s);
-            map_y.at<float>(y, x) = float(y_s);
+            map_x.at<float>(y, x) = static_cast<float>(x_s);
+            map_y.at<float>(y, x) = static_cast<float>(y_s);
         }
     }
-    return std::make_tuple(map_x, map_y);
+    // return std::make_tuple(map_x, map_y);
+    map_x.copyTo(m_map_x);
+    map_y.copyTo(m_map_y);
 
 }   // fish2Map()
 
-// 
-// @brief Mask creation for cropping image data inside the FOVD circle
-// 
-std::tuple<cv::Mat, cv::Mat>
+//! 
+//! @brief Mask creation for cropping image data inside the FOVD circle
+//! @param  cir_mask  output circular mask
+//! @param  inner_cir_mask output circular mask for the inner circle
+//! 
+// std::tuple<cv::Mat, cv::Mat>
+void
 FisheyeStitcher::createMask() 
 {
     cv::Mat cir_mask_ = cv::Mat(m_hs, m_ws, CV_8UC3);
     cv::Mat inner_cir_mask_ = cv::Mat(m_hs, m_ws, CV_8UC3);
 
-    int wShift = static_cast<int>(std::floor(((m_ws * (MAX_FOVD - m_inner_fovd) / MAX_FOVD) / 2.0f)));
+    int wShift = static_cast<int>(std::floor(
+                    ((m_ws * (MAX_FOVD - m_inner_fovd) / MAX_FOVD) / 2.0f)));
 
     // Create Circular mask to crop the input W.R.T. FOVD
     int r1 = static_cast<int>(std::floor((double(m_ws) / 2.0)));
     int r2 = static_cast<int>(std::floor((double(m_ws) / 2.0 - wShift * 2.0)));
-    cv::circle(cir_mask_,       cv::Point(int(m_hs / 2), int(m_ws / 2)), r1, cv::Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
-    cv::circle(inner_cir_mask_, cv::Point(int(m_hs / 2), int(m_ws / 2)), r2, cv::Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
+    cv::circle(cir_mask_,       cv::Point(int(m_hs / 2), int(m_ws / 2)), r1, 
+               cv::Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
+    cv::circle(inner_cir_mask_, cv::Point(int(m_hs / 2), int(m_ws / 2)), r2, 
+               cv::Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
 
     cv::Mat cir_mask;
     cv::Mat inner_cir_mask;
     cir_mask_.convertTo(cir_mask, CV_8UC3);
     inner_cir_mask_.convertTo(inner_cir_mask, CV_8UC3);
-    return std::make_tuple(cir_mask, inner_cir_mask);
+    // return std::make_tuple(cir_mask, inner_cir_mask);
+    cir_mask.copyTo(m_cir_mask);
+    inner_cir_mask.copyTo(m_inner_cir_mask);
 
 }   // createMask() 
 
-// 
-// @brief Rigid Moving Least Squares Interpolation
-// 
+//! 
+//! @brief  Rigid Moving Least Squares Interpolation
+//! @param  src  input source image
+//! @param  dst  output deformed image
+//!
 cv::Mat
 FisheyeStitcher::deform( const cv::Mat &src )
 {
     cv::Mat dst(src.size(), src.type());
-    remap(src, dst, m_mls_map_x, m_mls_map_y, CV_INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+    remap(src, dst, m_mls_map_x, m_mls_map_y, CV_INTER_LINEAR, 
+          cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     return dst;
 
 }   // deform() 
 
-// 
-// @brief Fisheye Light Fall-off Compensation: Scale_Map Construction
-// @param
-//     R_pf (in)
-//     scale_map (out)
-// 
-cv::Mat 
+//! 
+//! @brief Fisheye Light Fall-off Compensation: Scale_Map Construction
+//! @param R_pf       input reverse profile model
+//! 
+void
 FisheyeStitcher::genScaleMap()
 // FisheyeStitcher::genScaleMap( const cv::Mat &R_pf )
 // FisheyeStitcher::genScaleMap( const int H, const int W, const cv::Mat &R_pf )
@@ -182,7 +194,9 @@ FisheyeStitcher::genScaleMap()
     //------------------------------------------------------------------------//
     int H = m_hs;
     int W = m_ws;
-    int W_ = W / 2;
+    // int W_ = W / 2;
+    int W_ = std::floor(m_ws / 2);
+    int H_ = std::floor(m_hs / 2);
     cv::Mat x_coor = cv::Mat::zeros(1, W_, CV_32F);
     cv::Mat temp(x_coor.size(), x_coor.type());
 
@@ -213,8 +227,8 @@ FisheyeStitcher::genScaleMap()
     //------------------------------------------------------------------------//
     // Generate scale map                                                     //
     //------------------------------------------------------------------------//
-    int W_ = std::floor(m_ws / 2);
-    int H_ = std::floor(m_hs / 2);
+    // int W_ = std::floor(m_ws / 2);
+    // int H_ = std::floor(m_hs / 2);
 
     // Create IV quadrant map
     cv::Mat scale_map_quad_4 = cv::Mat::zeros(H_, W_, R_pf.type());
@@ -259,13 +273,15 @@ FisheyeStitcher::genScaleMap()
     cv::Mat scale_map;
     cv::vconcat(quad_21, quad_34, scale_map);
 
-    return scale_map;
+    scale_map.copyTo(m_scale_map);
 
 }   // genScaleMap() 
 
-//
-// @brief Fisheye Light Fall-off Compensation
-//
+//! 
+//! @brief  Fisheye Light Fall-off Compensation
+//! @param  in_img  LFO-uncompensated image
+//! @param  out_img  LFO-compensated image
+//!
 cv::Mat
 FisheyeStitcher::compenLightFO( const cv::Mat &in_img ) 
 {
@@ -288,9 +304,9 @@ FisheyeStitcher::compenLightFO( const cv::Mat &in_img )
 
 }   // compenLightFO() 
 
-//
-// @brief Create binary mask for blending
-//
+//! 
+//! @brief Create binary mask for blending
+//!
 void
 FisheyeStitcher::createBlendMask() 
 // void
@@ -305,15 +321,15 @@ FisheyeStitcher::createBlendMask()
     int Ws2 = static_cast<int>(m_ws / 2);
     int Hs2 = static_cast<int>(m_hs / 2);
     int Wd2 = static_cast<int>(m_wd / 2);
-    bitwise_not(m_inner_cir_mask, inner_cir_mask_n);
+    cv::bitwise_not(m_inner_cir_mask, inner_cir_mask_n);
 
-    m_cir_mask.copyTo(ring_mask, inner_cir_mask_n);
+    m_cir_mask.copyTo(ring_mask, inner_cir_mask_n); // masking
 
 #if MY_DEBUG
     imwrite("ring_mask.jpg", ring_mask);
 #endif
     
-    cv::remap(ring_mask, ring_mask_unwarped, m_map_x, m_map_y, CV_INTER_LINEAR, 
+    cv::remap(ring_mask, ring_mask_unwarped, m_map_x, m_map_y, CV_INTER_LINEAR,
               cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     
     cv::Mat mask_ = ring_mask_unwarped(cv::Rect(Wd2-Ws2, 0, m_ws, m_hd)); 
@@ -324,6 +340,7 @@ FisheyeStitcher::createBlendMask()
 
     int ridx, cidx;
 
+    // Hard-coded for dual-fisheye image of size 3840x1920
     const int first_zero_col = 120; // first cidx that mask value is zero
     const int first_zero_row =  45; // first ridx that mask value is zero
 
@@ -369,27 +386,19 @@ FisheyeStitcher::createBlendMask()
     }
 
     // generate binary mask
-    mask_.convertTo( m_binary_mask, CV_8UC3 );
+    mask_.convertTo( mask_, CV_8UC3 );
+    mask_.copyTo( m_binary_mask );
 
 #if MY_DEBUG
-    cout << "size mask_ = " << mask_.size() << ", type = " << mask_.type() << ", ch = " << mask_.channels() << "\n";
-    imwrite("mask.jpg", mask_);
+    std::cout << "size mask_ = " << mask_.size() << ", type = " << mask_.type()
+              << ", ch = " << mask_.channels() << "\n";
+    cv::imwrite("mask.jpg", mask_);
 #endif
 
 }   // createBlendMask()
 
 // 
 // @brief Initialize common parameters for stitching
-// @param
-//    m_map_x; // used in deformation
-//    m_map_y; // used in deformation
-//    m_cir_mask;
-//    m_inner_cir_mask;
-//    m_binary_mask;
-//    m_blend_post;
-//    m_scale_map;
-//    m_mls_map_x;
-//    m_mls_map_y;
 // 
 void 
 FisheyeStitcher::init() 
@@ -405,30 +414,34 @@ FisheyeStitcher::init()
     //------------------------------------------------------------------------//
     // Create deformation maps                                                //
     //------------------------------------------------------------------------//
-    std::tie(m_map_x, m_map_y) = fish2Map();
+    // std::tie(m_map_x, m_map_y) = fish2Map();
+    fish2Map(); // update m_map_x and m_map_y
 
     //------------------------------------------------------------------------//
     // Create Circular mask to Crop the input W.R.T FOVD                      //
     //------------------------------------------------------------------------//
     // (mask all data outside the FOVD circle)
+    // TODO: remove 2 lines below
     // cv::Mat inner_cir_mask;
     // double inner_fovd = 183.0;
-    std::tie(m_cir_mask, m_inner_cir_mask) = createMask();
+    // std::tie(m_cir_mask, m_inner_cir_mask) = createMask();
+    createMask(); // update m_cir_mask, m_inner_cir_mask 
 
     //------------------------------------------------------------------------//
     // Creat masks that used in blending the deformed images                  //
     //------------------------------------------------------------------------//
-    createBlendMask();
+    createBlendMask();  // update m_blend_post, m_binary_mask
+    // TODO remove 2 lines below
     // createBlendMask( cir_mask, inner_cir_mask, Ws, Hs, Wd, Hd, 
     //                   map_x, map_y, binary_mask, m_blend_post );
 
     //------------------------------------------------------------------------//
     // Create scale_map for fisheye light fall-off compensation               //
     //------------------------------------------------------------------------//
-    m_scale_map = genScaleMap();
+    genScaleMap(); // update m_scale_map
 
     //------------------------------------------------------------------------//
-    // Parse rigid MLS interp grids                                           //
+    // Read rigid MLS interp grids from file                                  //
     //------------------------------------------------------------------------//
     // 3840x1920 resolution (C200 video)
     cv::FileStorage fs("./utils/grid_xd_yd_3840x1920.yml.gz", 
@@ -442,17 +455,17 @@ FisheyeStitcher::init()
 
 // 
 // @brief Adaptive Alignment: Norm XCorr
-// @param
-//    Ref and Template images (in)
-//    Matching location (out)
+// @param  Ref input reference image
+// @param  Tmpl input template image
+// @param  matchLoc output matching location 
 //
-void 
-FisheyeStitcher::findMatchLoc( cv::Point2f &matchLoc, 
-                               const cv::Mat &Ref, 
-                               cv::Mat &Tmpl, 
-                               const std::string& img_window, 
-                               bool disable_display )
+cv::Point2f
+FisheyeStitcher::findMatchLoc( const cv::Mat &Ref, 
+                               const cv::Mat &Tmpl, 
+                               const std::string &img_window, 
+                               const bool disable_display )
 {
+    cv::Point2f matchLoc;
     double tickStart, tickEnd, runTime;
     cv::Mat img = Ref;
     cv::Mat templ = Tmpl;
@@ -470,10 +483,10 @@ FisheyeStitcher::findMatchLoc( cv::Point2f &matchLoc,
     cv::normalize(result, result, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 
     // Check for peak cross-correlation
-    double minVal, maxVal; 
+    double minVal, maxVal;
     cv::Point minLoc, maxLoc;
 
-    // Point matchLoc;
+    // Point matchLoc
     cv::minMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, cv::Mat());
 
     if (match_method == cv::TM_SQDIFF || match_method == cv::TM_SQDIFF_NORMED)
@@ -494,16 +507,15 @@ FisheyeStitcher::findMatchLoc( cv::Point2f &matchLoc,
         cv::hconcat(img_display, Tmpl, RefTemplCat);
         cv::imshow(img_window, RefTemplCat);
     }
+    return matchLoc;
 
 }   // findMatchLoc()
 
-
-// 
-// @brief Construct Control Points for Affine2D estimation
-// @param
-//    Matched Points in the template & ref (in)
-//    movingPoints & fixedPoints (out)
-// 
+//! 
+//! @brief  Construct control points for affine2D
+//! @param  movingPoints  output match points of template on reference 
+//! @param  fixedPoints   output match points of template on template
+//! 
 std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f> > 
 FisheyeStitcher::createControlPoints( const cv::Point2f &matchLocLeft, 
             const cv::Point2f &matchLocRight, const int row_start, 
@@ -518,9 +530,9 @@ FisheyeStitcher::createControlPoints( const cv::Point2f &matchLocLeft,
     float x2 = matchLocRight.x;
     float y2 = matchLocRight.y;
 
-    //-------------------------------------------------------------------------------
-    // Construct MovingPoints pRef (matched points of template on reference)
-    //-------------------------------------------------------------------------------
+    //------------------------------------------------------------------------//
+    // Construct MovingPoints pRef (matched points of template on reference)  //
+    //------------------------------------------------------------------------//
     // Left Boundary
     movingPoints.push_back(cv::Point2f(x1, y1 + row_start));                    // pRef_11
     movingPoints.push_back(cv::Point2f(x1 + p_wid, y1 + row_start));            // PRef_12
@@ -532,9 +544,9 @@ FisheyeStitcher::createControlPoints( const cv::Point2f &matchLocLeft,
     movingPoints.push_back(cv::Point2f(x2 + p_x2_ref, y2 + row_end));           // pRef_23
     movingPoints.push_back(cv::Point2f(x2 + p_x2_ref + p_wid, y2 + row_end));   // pRef_24
 
-    //-------------------------------------------------------------------------------
-    // Construct fixedPoint pTmpl (matched points of template on template)
-    //-------------------------------------------------------------------------------
+    //------------------------------------------------------------------------//
+    // Construct fixedPoint pTmpl (matched points of template on template)    //
+    //------------------------------------------------------------------------//
     // Left Boundary
     fixedPoints.push_back(cv::Point2f(p_x1, row_start));          // pTmpl_11
     fixedPoints.push_back(cv::Point2f(p_x1 + p_wid, row_start));  // pTmpl_12
@@ -547,6 +559,7 @@ FisheyeStitcher::createControlPoints( const cv::Point2f &matchLocLeft,
     fixedPoints.push_back(cv::Point2f(p_x2 + p_wid, row_end));    // pTmpl_24
 
     return std::make_tuple(movingPoints, fixedPoints);
+
 }   // createControlPoints()
 
 
@@ -592,7 +605,6 @@ FisheyeStitcher::blendRight( const cv::Mat &bg1, const cv::Mat &bg2 )
     return bg;
 
 }   // blendRight()
-
 
 // 
 //  @brief Ramp blending on the left patch
@@ -753,6 +765,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
 //         const int W_in, const bool disable_light_compen, const bool disable_refine_align,
 //         const Mat &binary_mask, const std::vector<int> &m_blend_post )
 {
+    // TODO: test with m_ws
     int W_in = 1920; // default: video 3840 x 1920
     cv::Mat left_unwarped, right_unwarped;
     double tickStart, tickEnd, runTime;
@@ -837,19 +850,29 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     //------------------------------------------------------------------------//
     // Rearrange Image for Adaptive Alignment                                 //
     //------------------------------------------------------------------------//
-    cv::Mat temp1 = left_unwarped(cv::Rect(0, 0, int(m_wd / 2), m_hd - 2));
-    cv::Mat temp2 = left_unwarped(cv::Rect(int(m_wd / 2), 0, int(m_wd / 2), 
+    cv::Mat temp1 = left_unwarped(cv::Rect(0, 0, m_wd2, m_hd - 2));
+    cv::Mat temp2 = left_unwarped(cv::Rect(m_wd2, 0, m_wd2, 
                                   m_hd - 2));
+    // TODO remove 3 lines below
+    // cv::Mat temp1 = left_unwarped(cv::Rect(0, 0, int(m_wd / 2), m_hd - 2));
+    // cv::Mat temp2 = left_unwarped(cv::Rect(int(m_wd / 2), 0, int(m_wd / 2), 
+    //                               m_hd - 2));
     cv::Mat left_unwarped_arr; // re-arranged left unwarped
     cv::hconcat(temp2, temp1, left_unwarped_arr);
     cv::Mat leftImg_crop;
-    leftImg_crop = left_unwarped_arr(cv::Rect(int(m_wd / 2) - (W_in / 2), 0, 
+    leftImg_crop = left_unwarped_arr(cv::Rect(m_wd2 - (W_in / 2), 0, 
                                      W_in, m_hd - 2)); 
-    uint16_t crop = static_cast<uint16_t>(0.5 * m_ws * (195.0 - 180.0) / 195.0); // half overlap region
+    // TODO remove 2 lines below
+    // leftImg_crop = left_unwarped_arr(cv::Rect(int(m_wd / 2) - (W_in / 2), 0, 
+    //                                  W_in, m_hd - 2)); 
+    uint16_t crop = static_cast<uint16_t>(0.5f * m_ws * (MAX_FOVD - 180.0) / MAX_FOVD); // half overlap region
+    // TODO remove 1 line below
+    // uint16_t crop = static_cast<uint16_t>(0.5 * m_ws * (195.0 - 180.0) / 195.0); // half overlap region
 
     //------------------------------------------------------------------------//
     // PARAMETERS (hard-coded) for C200 videos                                //
     //------------------------------------------------------------------------//
+    // (empirical experiment for dual-fisheye image of size 3840 x 1920)
     uint16_t p_wid     = 55;
     uint16_t p_x1      = 90 - 15;
     uint16_t p_x2      = 1780 - 5;
@@ -875,8 +898,8 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     // Adaptive Alignment (Norm XCorr)                                        //
     //------------------------------------------------------------------------//
     bool disable_display = 1;   // 1: display off, 0: display on
-    std::string name_bound_1 = "Matching On Left Boundary";
-    std::string name_bound_2 = "Matching On Right Boundary";
+    std::string wname1 = "Matching On Left Boundary";
+    std::string wname2 = "Matching On Right Boundary";
 
 #if PROFILING
     tickStart = double(cv::getTickCount());
@@ -893,21 +916,22 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
         // Find matching location (normalized XCorr)                          //
         //--------------------------------------------------------------------//
         cv::Point2f matchLocLeft, matchLocRight;
-        findMatchLoc(matchLocLeft , Ref_1, Tmpl_1, name_bound_1, disable_display); // Left boundary
-        findMatchLoc(matchLocRight, Ref_2, Tmpl_2, name_bound_2, disable_display); // Right boundary
+        matchLocLeft  = findMatchLoc(Ref_1, Tmpl_1, wname1, disable_display); // Left boundary
+        matchLocRight = findMatchLoc(Ref_2, Tmpl_2, wname2, disable_display); // Right boundary
 
 #if MY_DEBUG
-        std::cout << "matchLocLeft(x=" << matchLocLeft.x << ", y=" << matchLocLeft.y 
+        std::cout << "matchLocLeft(x=" << matchLocLeft.x 
+                  << ", y=" << matchLocLeft.y 
                   << "), matchLocRight(x=" << matchLocRight.x 
                   << ", y=" << matchLocRight.y << ")\n";
 #endif
 
+        //--------------------------------------------------------------------//
+        // Construct control points                                           //
+        //--------------------------------------------------------------------//
         std::vector<cv::Point2f> movingPoints;  // matched points in Refs  
         std::vector<cv::Point2f> fixedPoints;   // matched points in Templates
 
-        //--------------------------------------------------------------------//
-        // Construct control points for estimation                            //
-        //--------------------------------------------------------------------//
         std::tie(movingPoints, fixedPoints) = 
             createControlPoints(matchLocLeft, matchLocRight, row_start, row_end, 
                                 p_wid, p_x1, p_x2, p_x2_ref);
@@ -919,10 +943,10 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
         std::cout << "run-time (Xcorr & fitGeoTrans) = " << runTime << " (sec)" << "\n";
 #endif
 
-        cv::Mat tform_refine_mat;
         //--------------------------------------------------------------------//
         // Estimate affine matrix                                             //
         //--------------------------------------------------------------------//
+        cv::Mat tform_refine_mat;
         tform_refine_mat = cv::findHomography(fixedPoints, movingPoints, 0);
 
         //--------------------------------------------------------------------//

@@ -23,9 +23,20 @@ add_definitions(
     # -DPROFILING     # Profiling performance function-wise
     # -DGEAR360_C200  # Setting for GEAR 360 C200 camera 
 )
+add_library( stitcher SHARED
+    src/fisheye_stitcher.cpp
+)
 
 add_executable( fisheyeStitcher 
     src/fisheye_stitcher.cpp 
+    app/stitch.cpp
 )
 
-target_link_libraries( fisheyeStitcher ${OpenCV_LIBS} )
+target_link_libraries( fisheyeStitcher 
+    stitcher
+    ${OpenCV_LIBS} 
+)
+set_target_properties( fisheyeStitcher
+    PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
