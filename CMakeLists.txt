@@ -19,7 +19,7 @@ include_directories(
 )
 
 add_definitions( 
-    # -DMY_DEBUG      # Print debug info and dump intermediate images 
+    -DMY_DEBUG      # Print debug info and dump intermediate images 
     # -DPROFILING     # Profiling performance function-wise
     # -DGEAR360_C200  # Setting for GEAR 360 C200 camera 
 )

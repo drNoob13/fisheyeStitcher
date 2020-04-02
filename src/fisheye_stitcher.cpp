@@ -20,9 +20,11 @@ FisheyeStitcher::FisheyeStitcher(int width, int height, float in_fovd,
     // Source images
     m_ws = static_cast<int>(width / 2); // e.g. 1920 
     m_hs = height; // e.g. 1920
+    CV_Assert( (m_ws % 2 == 0) && (m_hs % 2 == 0) );
+
     // Destination pano
     m_wd = static_cast<int>(m_ws * 360.0 / MAX_FOVD);
-    m_hd = m_hs;
+    m_hd = static_cast<int>(m_wd / 2);
     m_wd2 = static_cast<int>(m_wd / 2);
 
     init();
@@ -80,7 +82,8 @@ FisheyeStitcher::fish2Eqt( const double x_dest, const double y_dest,
     //
     double x_src = theta * v[0] / r;
     double y_src = theta * v[1] / r;
-    std::make_tuple(x_src, y_src);
+
+    return std::make_tuple(x_src, y_src);
 
 }   // fish2Eqt()
 
@@ -96,7 +99,7 @@ FisheyeStitcher::fish2Map()
 {
     cv::Mat map_x(m_hd, m_wd, CV_32FC1);
     cv::Mat map_y(m_hd, m_wd, CV_32FC1);
-    double w_rad = m_wd / (2.0 * CV_PI);
+    static double w_rad = m_wd / (2.0 * CV_PI);
     // TODO remove 1 line below
     // static double w_rad = m_wd / (2 * CV_PI);
     double x_d, y_d; // dest
@@ -115,6 +118,7 @@ FisheyeStitcher::fish2Map()
             x_d = static_cast<double>(x) - w2;
             // Convert fisheye coordinate to cartesian coordinate (equirectangular)
             std::tie(x_s, y_s) = fish2Eqt(x_d, y_d, w_rad);
+            // std::cout << "[W_rad,x_d,y_d,x_s,y_s]=[" << w_rad << "," << x_d << "," << y_d << "," << x_s << "," << y_s << "]\n";
             //remove fish2Eqt(x_d, y_d, &x_s, &y_s, W_rad);
             // Convert source cartesian coordinate to screen coordinate
             x_s += ws2;
@@ -172,7 +176,7 @@ cv::Mat
 FisheyeStitcher::deform( const cv::Mat &src )
 {
     cv::Mat dst(src.size(), src.type());
-    remap(src, dst, m_mls_map_x, m_mls_map_y, CV_INTER_LINEAR, 
+    cv::remap(src, dst, m_mls_map_x, m_mls_map_y, CV_INTER_LINEAR, 
           cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     return dst;
 
@@ -326,7 +330,17 @@ FisheyeStitcher::createBlendMask()
     m_cir_mask.copyTo(ring_mask, inner_cir_mask_n); // masking
 
 #if MY_DEBUG
-    imwrite("ring_mask.jpg", ring_mask);
+    // std::cout << "m_ws = " << m_ws << ", m_hs = " << m_hs << "\n";
+    // std::cout << "m_wd = " << m_wd << ", m_hd = " << m_hd << "\n";
+    // std::cout << "Wd2 = " << Wd2 << ", Ws2 = " << Ws2 << "\n";
+    std::cout << "write ring_mask to file" << "\n";
+
+    std::cout << "Ws = " << m_ws << ", Hs = " << m_hs << "\n";
+    std::cout << "Wd = " << m_wd << ", Hd = " << m_hd << "\n";
+
+
+    cv::imwrite("m_cir_mask.jpg", m_cir_mask);
+    cv::imwrite("ring_mask.jpg", ring_mask);
 #endif
     
     cv::remap(ring_mask, ring_mask_unwarped, m_map_x, m_map_y, CV_INTER_LINEAR,
@@ -334,6 +348,12 @@ FisheyeStitcher::createBlendMask()
     
     cv::Mat mask_ = ring_mask_unwarped(cv::Rect(Wd2-Ws2, 0, m_ws, m_hd)); 
     mask_.convertTo(mask_, CV_8UC3);
+
+// #if MY_DEBUG
+    std::cout << "write ring_mask_unwarped to file" << "\n";
+    // cv::imwrite("ring_mask_unwarped.jgp", ring_mask_unwarped);
+    cv::imwrite("mask_.jpg", mask_);
+// #endif
 
     int H_ = mask_.size().height;
     int W_ = mask_.size().width;
@@ -386,13 +406,14 @@ FisheyeStitcher::createBlendMask()
     }
 
     // generate binary mask
-    mask_.convertTo( mask_, CV_8UC3 );
-    mask_.copyTo( m_binary_mask );
+    cv::Mat binary_mask;
+    mask_.convertTo( binary_mask, CV_8UC3 );
+    binary_mask.copyTo( m_binary_mask );
 
 #if MY_DEBUG
     std::cout << "size mask_ = " << mask_.size() << ", type = " << mask_.type()
               << ", ch = " << mask_.channels() << "\n";
-    cv::imwrite("mask.jpg", mask_);
+    cv::imwrite("binary_mask.jpg", binary_mask);
 #endif
 
 }   // createBlendMask()
@@ -443,12 +464,25 @@ FisheyeStitcher::init()
     //------------------------------------------------------------------------//
     // Read rigid MLS interp grids from file                                  //
     //------------------------------------------------------------------------//
+    cv::Mat mls_map_x, mls_map_y;
     // 3840x1920 resolution (C200 video)
-    cv::FileStorage fs("./utils/grid_xd_yd_3840x1920.yml.gz", 
-                       cv::FileStorage::READ);
-    fs["Xd"] >> m_mls_map_x;
-    fs["Yd"] >> m_mls_map_y;
-    fs.release();
+    std::string map_path = "../utils/grid_xd_yd_3840x1920.yml.gz";
+    cv::FileStorage fs(map_path, cv::FileStorage::READ);
+    if( fs.isOpened())
+    {
+        fs["Xd"] >> mls_map_x;
+        fs["Yd"] >> mls_map_y;
+        fs.release();
+    }
+    else
+    {
+        CV_Error_(cv::Error::StsBadArg, 
+            ("Cannot open map file1: %s", map_path.c_str()));
+        // CV_Error_(cv::Error::StsBadArg, 
+        //     ("Cannot open map file1: %s", m_map_filename1.c_str()));
+    }
+    mls_map_x.copyTo(m_mls_map_x);
+    mls_map_y.copyTo(m_mls_map_y);
 
 }   // init()
 
@@ -774,9 +808,9 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     tickStart = double(cv::getTickCount());
 #endif
 
-    //--------------------------------------------------------------------------
-    // Circular Crop
-    //--------------------------------------------------------------------------
+    //------------------------------------------------------------------------//
+    // Circular Crop                                                          //
+    //------------------------------------------------------------------------// 
     cv::bitwise_and(in_img_L, m_cir_mask, in_img_L); // Left image
     cv::bitwise_and(in_img_R, m_cir_mask, in_img_R); // Right image
 
@@ -787,9 +821,9 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     std::cout << "run-time (Crop) = " << runTime << " (sec)" << "\n";
 #endif
 
-    //--------------------------------------------------------------------------
-    // Light Fall-off Compensation
-    //--------------------------------------------------------------------------
+    //------------------------------------------------------------------------//
+    // Light Fall-off Compensation                                            //
+    //------------------------------------------------------------------------//
     cv::Mat left_img_compensated(in_img_L.size(), in_img_L.type());
     cv::Mat right_img_compensated(in_img_R.size(), in_img_R.type());
     if (!m_enb_light_compen) // skip LFOC
@@ -839,6 +873,11 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     rightImg_crop = right_unwarped(cv::Rect(int(m_wd / 2) - (W_in / 2), 0, 
                                    W_in, m_hd - 2)); // notice on (Hd-2) --> become: (Hd)
     rightImg_mls_deformed = deform(rightImg_crop);
+
+#if MY_DEBUG
+    cv::imwrite("r_img_crop.jpg", rightImg_crop);
+    cv::imwrite("r_mls_deformed.jpg",rightImg_mls_deformed);
+#endif
 
 #if PROFILING
     tickEnd = double(cv::getTickCount());
