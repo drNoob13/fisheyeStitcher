@@ -109,11 +109,18 @@ FisheyeStitcher::fish2Map()
     double ws2 = static_cast<double>(m_ws) / 2.0 - 0.5;
     double hs2 = static_cast<double>(m_hs) / 2.0 - 0.5;
 
+#if MY_DEBUG // temporary test only
+    std::cout << "[w2,h2,ws2,hs2,w_rad] = " 
+              << w2 << "," << h2 << ","
+              << ws2 << "," << hs2 << ","
+              << w_rad << "\n";
+#endif
+
     for (int y = 0; y < m_hd; ++y)
     {
         // y-coordinate in dest image relative to center
         y_d = static_cast<double>(y) - h2;
-        for (int x = 0; x < m_hd; ++x)
+        for (int x = 0; x < m_wd; ++x)
         {
             x_d = static_cast<double>(x) - w2;
             // Convert fisheye coordinate to cartesian coordinate (equirectangular)
@@ -143,6 +150,8 @@ FisheyeStitcher::fish2Map()
 void
 FisheyeStitcher::createMask() 
 {
+    std::cout << "[Ws,Hs,in_fovd] = " << m_ws << "," << m_hs << "," << m_inner_fovd      << "\n";
+
     cv::Mat cir_mask_ = cv::Mat(m_hs, m_ws, CV_8UC3);
     cv::Mat inner_cir_mask_ = cv::Mat(m_hs, m_ws, CV_8UC3);
 
@@ -333,27 +342,29 @@ FisheyeStitcher::createBlendMask()
     // std::cout << "m_ws = " << m_ws << ", m_hs = " << m_hs << "\n";
     // std::cout << "m_wd = " << m_wd << ", m_hd = " << m_hd << "\n";
     // std::cout << "Wd2 = " << Wd2 << ", Ws2 = " << Ws2 << "\n";
-    std::cout << "write ring_mask to file" << "\n";
-
+    std::cout << "write ring_mask to file" << "\n"; 
     std::cout << "Ws = " << m_ws << ", Hs = " << m_hs << "\n";
-    std::cout << "Wd = " << m_wd << ", Hd = " << m_hd << "\n";
-
-
+    std::cout << "Wd = " << m_wd << ", Hd = " << m_hd << "\n"; 
     cv::imwrite("m_cir_mask.jpg", m_cir_mask);
     cv::imwrite("ring_mask.jpg", ring_mask);
 #endif
     
     cv::remap(ring_mask, ring_mask_unwarped, m_map_x, m_map_y, CV_INTER_LINEAR,
               cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+
+// TODO remove temp testing below
+#if MY_DEBUG
+    cv::imwrite("ring_mask_unwarped.jpg", ring_mask_unwarped);
+#endif
     
     cv::Mat mask_ = ring_mask_unwarped(cv::Rect(Wd2-Ws2, 0, m_ws, m_hd)); 
     mask_.convertTo(mask_, CV_8UC3);
 
-// #if MY_DEBUG
+#if MY_DEBUG
     std::cout << "write ring_mask_unwarped to file" << "\n";
     // cv::imwrite("ring_mask_unwarped.jgp", ring_mask_unwarped);
     cv::imwrite("mask_.jpg", mask_);
-// #endif
+#endif
 
     int H_ = mask_.size().height;
     int W_ = mask_.size().width;
