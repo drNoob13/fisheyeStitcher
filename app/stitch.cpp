@@ -7,16 +7,12 @@
 //----------------------------------------------------------------------------//
 #include "fisheye_stitcher.hpp"
 #include "input_parser.hpp"
-#include <math.h>   // remainder 
 
 int
 main(int argc, char **argv)
 {
     // Parse input 
     ffstitcher::InputParser Parser(argc, argv);
-
-    int Ws = Parser.getImageSize().width;
-    int Hs = Parser.getImageSize().height;
 
     // Video input 
     cv::VideoCapture VCap( Parser.getVideoPath() );
@@ -35,25 +31,24 @@ main(int argc, char **argv)
     int    frame_fps      = VCap.get(CV_CAP_PROP_FPS);
     int    frame_width    = VCap.get(CV_CAP_PROP_FRAME_WIDTH);
     int    frame_height   = VCap.get(CV_CAP_PROP_FRAME_HEIGHT);
+
+    CV_Assert( (frame_width % 2 == 0) && (frame_height % 2 == 0) );
+
     std::string video_out_name = Parser.getOutDir() + "/" + 
                         Parser.getImageName() + "_blend_video.avi";
 
-    int Wd = static_cast<int>(frame_width * 360.0 / MAX_FOVD);
+
+    int Wd = static_cast<int>(frame_width / 2 * 360.0 / MAX_FOVD);
+    int Hd = static_cast<int>(Wd / 2);
+    Hd = Hd - (Hd % 10); // trim exceesive pixel lines
     cv::VideoWriter VOut;
     VOut.open( video_out_name, cv::VideoWriter::fourcc('X','2','6','4'), // OpenCV 4.1.0
-               frame_fps, cv::Size(frame_width, frame_height) );
-    // VOut.open( video_out_name, cv::VideoWriter::fourcc('X','2','6','4'), // OpenCV 4.1.0
-    //            frame_fps, cv::Size(frame_width, frame_height-2) );
+               frame_fps, cv::Size(Wd, Hd) );
     if( !VOut.isOpened() )
     {
         CV_Error_(cv::Error::StsBadArg, 
                   ("Error opening video: %s", video_out_name.c_str()));
     } 
-    std::cout << "Writing to video [" 
-         << frame_width << "x" << frame_height << "] @" 
-         << frame_fps << "fps  --> " << video_out_name << "\n";
-
-    CV_Assert( frame_width == Ws && frame_height  == Hs );
 
     // Dual-fisheye stitcher
     stitcher::FisheyeStitcher Stitcher(
@@ -97,17 +92,14 @@ main(int argc, char **argv)
         cv::Mat pano;
         pano = Stitcher.stitch(img_l, img_r);
 
-        // cv::imwrite("test_pano.jpg", pano);
-
         // RunTime
         // endTime = double(cv::getTickCount());
         // totalTime = (endTime - startOneFrTime) / cv::getTickFrequency();
 
-        // if( std::remainder(count,30) == 0 )
-        // {
-        //     std::cout << "Stitching frame: " << count << "\n";
-        //     // std::cout << "Stitching frame: " << count << " (" << totalTime << " sec)\n";
-        // }
+        if( count % 30 == 0 )
+        {
+            std::cout << "Stitching frame: " << count << "\n";
+        }
 
 #if PROFILING
         double tickStart = endTime; // previous count
@@ -119,15 +111,16 @@ main(int argc, char **argv)
         double runTime = (tickEnd - tickStart) / cv::getTickFrequency();
         tickStart = tickEnd;
         std::cout << "run-time (resize) = " << runTime << " (sec)" << "\n";
-#endif
-
+#endif 
         count++;
 
     }   // while(1)
 
     VCap.release();
     VOut.release();
-    std::cout << "Finished! Video write to: " << video_out_name << "\n";
+
+    std::cout << "Done! Writing to video [" << Wd << "x" << Hd << "] @" 
+         << frame_fps << "fps  --> " << video_out_name << "\n";
 
     // RunTime
     endTime = double(cv::getTickCount());

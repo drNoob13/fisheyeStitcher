@@ -27,6 +27,7 @@ FisheyeStitcher::FisheyeStitcher(int width, int height, float in_fovd,
     m_hd = static_cast<int>(m_wd / 2);
     m_wd2 = static_cast<int>(m_wd / 2);
 
+    std::cout << "Initializing necessary parameters..\n";
     init();
 }
 
@@ -439,7 +440,7 @@ FisheyeStitcher::init()
 //                  cv::Mat &binary_mask, std::vector<int> &m_blend_post,
 //                  int Hs, const int Ws, const int Hd, 
 //                  const int Wd, const float fovd )
-{ 
+{
     // TODO: remove 1 line below:
     // CV_Assert( (m_hs % 2 == 0) && (m_ws % 2 == 0) );
 
