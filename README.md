@@ -25,18 +25,21 @@ The code is built and tested in Ubuntu 16.04 and Ubuntu 18.04
 
 * Clone the repo and go to the cloned repo.
 
-* Build the code
-```
-mkdir build
-cd build
-cmake ..
-make
-```
+* Build the code 
+    ```
+    mkdir build
+    cd build
+    cmake ..
+    make
+    cd ..
+    ```
 
-* Run the code with provided sample images
-```
-./RUN_fisheye.sh
-```
+* Run the example 
+    ```
+    cd scripts
+    ./RUN_fisheye.sh
+
+    ```
 
 Please be informed that the code doesn't include the temporal coherence control, but one can implement it using the description in [1].
 
