@@ -29,6 +29,7 @@ FisheyeStitcher::FisheyeStitcher(int width, int height, float in_fovd,
     m_hd = static_cast<int>(m_wd / 2);
     m_wd2 = static_cast<int>(m_wd / 2);
 
+    // Initializing parameters
     std::cout << "Initializing necessary parameters..\n";
     init();
 }
@@ -38,7 +39,7 @@ FisheyeStitcher::~FisheyeStitcher()
 }
 
 //! 
-//! @brief: Fisheye Unwarping
+//! @brief Fisheye Unwarping
 //!
 //!   Unwarp source fisheye -> 360x180 equirectangular
 //!
@@ -90,8 +91,10 @@ FisheyeStitcher::fish2Eqt( const double x_dest, const double y_dest,
 
 //! 
 //! @brief Map 2D fisheye image to 2D projected sphere
-//! @param  map_x output map for x element.
-//! @param  map_y output map for y element.
+//! @param  map_x map for x element.
+//! @param  map_y map for y element.
+//!
+//!    Update member grid maps m_map_x, m_map_y
 //! 
 void
 FisheyeStitcher::fish2Map()
@@ -120,12 +123,12 @@ FisheyeStitcher::fish2Map()
             // Convert source cartesian coordinate to screen coordinate
             x_s += ws2;
             y_s += hs2;
+
             // Create map
             map_x.at<float>(y, x) = static_cast<float>(x_s);
             map_y.at<float>(y, x) = static_cast<float>(y_s);
         }
     }
-    // return std::make_tuple(map_x, map_y);
     map_x.copyTo(m_map_x);
     map_y.copyTo(m_map_y);
 
@@ -133,8 +136,9 @@ FisheyeStitcher::fish2Map()
 
 //! 
 //! @brief Mask creation for cropping image data inside the FOVD circle
-//! @param  cir_mask  output circular mask
-//! @param  inner_cir_mask output circular mask for the inner circle
+//!
+//!     Update member m_cir_mask (circular mask), inner_cir_mask (circular 
+//!     mask for the inner circle).
 //! 
 void
 FisheyeStitcher::createMask() 
@@ -164,8 +168,8 @@ FisheyeStitcher::createMask()
 
 //! 
 //! @brief  Rigid Moving Least Squares Interpolation
-//! @param  src  input source image
-//! @param  dst  output deformed image
+//! @param  src  source image
+//! @param  return  deformed image
 //!
 cv::Mat
 FisheyeStitcher::deform( const cv::Mat &src )
@@ -179,7 +183,9 @@ FisheyeStitcher::deform( const cv::Mat &src )
 
 //! 
 //! @brief Fisheye Light Fall-off Compensation: Scale_Map Construction
-//! @param R_pf       input reverse profile model
+//! @param R_pf  everse profile model
+//!
+//!     Update member m_scale_map
 //! 
 void
 FisheyeStitcher::genScaleMap()
@@ -273,7 +279,7 @@ FisheyeStitcher::genScaleMap()
 //! 
 //! @brief  Fisheye Light Fall-off Compensation
 //! @param  in_img  LFO-uncompensated image
-//! @param  out_img  LFO-compensated image
+//! @param  return  LFO-compensated image
 //!
 cv::Mat
 FisheyeStitcher::compenLightFO( const cv::Mat &in_img ) 
@@ -299,6 +305,8 @@ FisheyeStitcher::compenLightFO( const cv::Mat &in_img )
 
 //! 
 //! @brief Create binary mask for blending
+//! 
+//!     Update member masks.
 //!
 void
 FisheyeStitcher::createBlendMask() 
@@ -443,12 +451,12 @@ FisheyeStitcher::init()
 }   // init()
 
 
-// 
-// @brief Adaptive Alignment: Norm XCorr
-// @param  Ref input reference image
-// @param  Tmpl input template image
-// @param  matchLoc output matching location 
-//
+//! 
+//! @brief Adaptive Alignment: Norm XCorr
+//! @param  Ref  reference image
+//! @param  Tmpl  template image
+//! @param  return  matching location 
+//!
 cv::Point2f
 FisheyeStitcher::findMatchLoc( const cv::Mat &Ref, 
                                const cv::Mat &Tmpl, 
@@ -503,8 +511,8 @@ FisheyeStitcher::findMatchLoc( const cv::Mat &Ref,
 
 //! 
 //! @brief  Construct control points for affine2D
-//! @param  movingPoints  output match points of template on reference 
-//! @param  fixedPoints   output match points of template on template
+//! @param  movingPoints  return match points of template on reference 
+//! @param  fixedPoints   return match points of template on template
 //! 
 std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f> > 
 FisheyeStitcher::createControlPoints( const cv::Point2f &matchLocLeft, 
@@ -552,9 +560,11 @@ FisheyeStitcher::createControlPoints( const cv::Point2f &matchLocLeft,
 
 }   // createControlPoints()
 
-
 //! 
-//! @brief Ramp blending on the right patch
+//! @brief  Ramp blending on the right patch
+//! @param  bg1  first patch
+//! @param  bg2  second patch
+//! @param  return  blended patch
 //! 
 cv::Mat 
 FisheyeStitcher::blendRight( const cv::Mat &bg1, const cv::Mat &bg2 )
@@ -597,7 +607,10 @@ FisheyeStitcher::blendRight( const cv::Mat &bg1, const cv::Mat &bg2 )
 }   // blendRight()
 
 //! 
-//!  @brief Ramp blending on the left patch
+//! @brief  Ramp blending on the left patch
+//! @param  bg1  first patch
+//! @param  bg2  second patch
+//! @param  return  blended patch
 //! 
 cv::Mat 
 FisheyeStitcher::blendLeft( const cv::Mat &bg1, const cv::Mat &bg2 )
