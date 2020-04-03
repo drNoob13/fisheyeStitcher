@@ -23,11 +23,6 @@ main(int argc, char **argv)
     } 
 
     // Video output 
-    // OpenCV 3.4.2
-    // int    frame_fps      = VCap.get(CV_CAP_PROP_FPS);
-    // int    frame_width    = VCap.get(CV_CAP_PROP_FRAME_WIDTH);
-    // int    frame_height   = VCap.get(CV_CAP_PROP_FRAME_HEIGHT);
-    // OpenCV 4.1.0
     int    frame_fps      = VCap.get(CV_CAP_PROP_FPS);
     int    frame_width    = VCap.get(CV_CAP_PROP_FRAME_WIDTH);
     int    frame_height   = VCap.get(CV_CAP_PROP_FRAME_HEIGHT);
@@ -36,7 +31,6 @@ main(int argc, char **argv)
 
     std::string video_out_name = Parser.getOutDir() + "/" + 
                         Parser.getImageName() + "_blend_video.avi";
-
 
     int Wd = static_cast<int>(frame_width / 2 * 360.0 / MAX_FOVD);
     int Hd = static_cast<int>(Wd / 2);
@@ -50,20 +44,25 @@ main(int argc, char **argv)
                   ("Error opening video: %s", video_out_name.c_str()));
     } 
 
-    // Dual-fisheye stitcher
+    // Create a stitcher
     stitcher::FisheyeStitcher Stitcher(
         frame_width, 
         frame_height,
         195.0f,
         Parser.getFlagLightCompen(),
-        Parser.getFlagRefineAlign()
+        Parser.getFlagRefineAlign(),
+        Parser.getMLSMapPath()
     );
 
     // Main video loop
     int count = 0;
     cv::Mat img, frame;
 
-    double startTime, endTime, totalTime;
+    std::cout << "Starting frame stitching..\n";
+
+    double startTime, endTime;
+    double totalTime;
+    double total_stitch_time = 0;
     startTime = double(cv::getTickCount()); // frame stitching starts 
 
     while( 1 )
@@ -75,26 +74,21 @@ main(int argc, char **argv)
             std::cout << "end of video\n";
             break;
         }
-
-        // Testing
-        // if( count == 430 ) break;
-        // if( count == 390 ) break;
-        // if( count == 40 ) break;
-        // if( count == 1 ) break;
  
         cv::Mat img_l, img_r;
-        img_l = img(cv::Rect(0,  0, int(img.size().width / 2), frame_height)); // left fisheye
-        img_r = img(cv::Rect(int(img.size().width / 2), 0, int(img.size().width / 2), frame_height)); // right fisheye 
+        img_l = img(cv::Rect(0,  0, int(img.size().width / 2), 
+                    frame_height)); // left fisheye
+        img_r = img(cv::Rect(int(img.size().width / 2), 0, 
+                    int(img.size().width / 2), frame_height)); // right fisheye 
 
-        double startOneFrTime = double(cv::getTickCount()); // frame stitching starts
+        double stitch_start = double(cv::getTickCount()); // frame stitching starts
 
         // Stitch video frames
         cv::Mat pano;
         pano = Stitcher.stitch(img_l, img_r);
 
-        // RunTime
-        // endTime = double(cv::getTickCount());
-        // totalTime = (endTime - startOneFrTime) / cv::getTickFrequency();
+        double stitch_end = double(cv::getTickCount());
+        total_stitch_time += ((stitch_end - stitch_start) / cv::getTickFrequency());
 
         if( count % 30 == 0 )
         {
@@ -125,10 +119,15 @@ main(int argc, char **argv)
     // RunTime
     endTime = double(cv::getTickCount());
     totalTime = (endTime - startTime) / cv::getTickFrequency();
+
     std::cout << "Total time = " << totalTime / 60 << " min" 
               << " (" << totalTime << " sec)\n";
+    std::cout << "Total stitching time = " << total_stitch_time / 60 << " min" 
+              << " (" << total_stitch_time << " sec)\n";
     std::cout << "Average frame time = " << totalTime / (count*60) << " min" 
               << " (" << totalTime / count << " sec)\n";
+    std::cout << "Average frame stitch time = " << total_stitch_time / (count*60) << " min" 
+              << " (" << total_stitch_time / count << " sec)\n";
 
     std::cout << "\nSee you again.\n";
 
