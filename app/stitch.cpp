@@ -7,6 +7,7 @@
 //----------------------------------------------------------------------------//
 #include "fisheye_stitcher.hpp"
 #include "input_parser.hpp"
+#include <math.h>   // remainder 
 
 int
 main(int argc, char **argv)
@@ -84,7 +85,7 @@ main(int argc, char **argv)
         // if( count == 430 ) break;
         // if( count == 390 ) break;
         // if( count == 40 ) break;
-        // if( count == 2 ) break;
+        // if( count == 1 ) break;
  
         cv::Mat img_l, img_r;
         img_l = img(cv::Rect(0,  0, int(img.size().width / 2), frame_height)); // left fisheye
@@ -99,11 +100,26 @@ main(int argc, char **argv)
         // cv::imwrite("test_pano.jpg", pano);
 
         // RunTime
-        endTime = double(cv::getTickCount());
-        totalTime = (endTime - startOneFrTime) / cv::getTickFrequency();
-        std::cout << "Stitching frame: " << count << " (" << totalTime << " sec)\n";
+        // endTime = double(cv::getTickCount());
+        // totalTime = (endTime - startOneFrTime) / cv::getTickFrequency();
 
+        // if( std::remainder(count,30) == 0 )
+        // {
+        //     std::cout << "Stitching frame: " << count << "\n";
+        //     // std::cout << "Stitching frame: " << count << " (" << totalTime << " sec)\n";
+        // }
+
+#if PROFILING
+        double tickStart = endTime; // previous count
+#endif 
         VOut << pano;
+
+#if PROFILING
+        double tickEnd = double(cv::getTickCount());
+        double runTime = (tickEnd - tickStart) / cv::getTickFrequency();
+        tickStart = tickEnd;
+        std::cout << "run-time (resize) = " << runTime << " (sec)" << "\n";
+#endif
 
         count++;
 
@@ -118,6 +134,8 @@ main(int argc, char **argv)
     totalTime = (endTime - startTime) / cv::getTickFrequency();
     std::cout << "Total time = " << totalTime / 60 << " min" 
               << " (" << totalTime << " sec)\n";
+    std::cout << "Average frame time = " << totalTime / (count*60) << " min" 
+              << " (" << totalTime / count << " sec)\n";
 
     std::cout << "\nSee you again.\n";
 

@@ -987,8 +987,8 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
                                 p_wid, p_x1, p_x2, p_x2_ref);
 
 #if PROFILING
-        tickEnd = double(std::getTickCount());
-        runTime = (tickEnd - tickStart) / std::getTickFrequency();
+        tickEnd = double(cv::getTickCount());
+        runTime = (tickEnd - tickStart) / cv::getTickFrequency();
         tickStart = tickEnd;
         std::cout << "run-time (Xcorr & fitGeoTrans) = " << runTime << " (sec)" << "\n";
 #endif

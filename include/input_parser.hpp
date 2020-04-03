@@ -19,8 +19,10 @@ public:
       : m_img_path(std::string("nofile")), m_out_dir(std::string(" ")),
         m_corr_file(std::string("empty")), m_img_nm(std::string("empty")),
         m_ccalib_ed_l(std::string("nofile")),
-        m_ccalib_ed_r(std::string("nofile")),
-        m_use_store_map(0), m_mode(std::string("image")),
+        m_ccalib_ed_r(std::string("nofile")), 
+        m_enb_light_compen(false),
+        m_enb_refine_align(false),
+        m_use_store_map(false), m_mode(std::string("image")),
         m_ed_map_l(std::string("empty")), m_ed_map_r(std::string("empty")),
         m_image_width(0), m_image_height(0), m_video_path("nofile")
     {
