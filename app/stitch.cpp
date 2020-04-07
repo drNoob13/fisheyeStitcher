@@ -81,13 +81,13 @@ main(int argc, char **argv)
         img_r = img(cv::Rect(int(img.size().width / 2), 0, 
                     int(img.size().width / 2), frame_height)); // right fisheye 
 
-        double stitch_start = double(cv::getTickCount()); // frame stitching starts
+        double stitch_start = static_cast<double>(cv::getTickCount()); // frame stitching starts
 
         // Stitch video frames
         cv::Mat pano;
         pano = Stitcher.stitch(img_l, img_r);
 
-        double stitch_end = double(cv::getTickCount());
+        double stitch_end = static_cast<double>(cv::getTickCount());
         total_stitch_time += ((stitch_end - stitch_start) / cv::getTickFrequency());
 
         if( count % 30 == 0 )
@@ -101,7 +101,7 @@ main(int argc, char **argv)
         VOut << pano;
 
 #if PROFILING
-        double tickEnd = double(cv::getTickCount());
+        double tickEnd = static_cast<double>(cv::getTickCount());
         double runTime = (tickEnd - tickStart) / cv::getTickFrequency();
         tickStart = tickEnd;
         std::cout << "run-time (resize) = " << runTime << " (sec)" << "\n";
@@ -110,15 +110,15 @@ main(int argc, char **argv)
 
     }   // while(1)
 
+    // RunTime
+    endTime = static_cast<double>(cv::getTickCount());
+    totalTime = (endTime - startTime) / cv::getTickFrequency();
+
     VCap.release();
     VOut.release();
 
     std::cout << "Done! Writing to video [" << Wd << "x" << Hd << "] @" 
          << frame_fps << "fps  --> " << video_out_name << "\n";
-
-    // RunTime
-    endTime = double(cv::getTickCount());
-    totalTime = (endTime - startTime) / cv::getTickFrequency();
 
     std::cout << "Total time = " << totalTime / 60 << " min" 
               << " (" << totalTime << " sec)\n";

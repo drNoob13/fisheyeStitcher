@@ -23,11 +23,14 @@ FisheyeStitcher::FisheyeStitcher(int width, int height, float in_fovd,
     m_ws = static_cast<int>(width / 2); // e.g. 1920 
     m_hs = height; // e.g. 1920
     CV_Assert( (m_ws % 2 == 0) && (m_hs % 2 == 0) );
+    m_ws2 = static_cast<int>(m_ws / 2);
+    m_hs2 = static_cast<int>(m_hs / 2);
 
     // Destination pano
-    m_wd = static_cast<int>(m_ws * 360.0 / MAX_FOVD);
-    m_hd = static_cast<int>(m_wd / 2);
-    m_wd2 = static_cast<int>(m_wd / 2);
+    m_wd  = static_cast<int>(m_ws * 360.0 / MAX_FOVD);
+    m_hd  = static_cast<int>(std::floor(m_wd / 2));
+    m_wd2 = static_cast<int>(std::floor(m_wd / 2));
+    m_hd2 = static_cast<int>(std::floor(m_hd / 2));
 
     // Initializing parameters
     std::cout << "Initializing necessary parameters..\n";
@@ -104,10 +107,10 @@ FisheyeStitcher::fish2Map()
     double w_rad = m_wd / (2.0 * CV_PI);
     double x_d, y_d; // dest
     double x_s, y_s; // source
-    double w2  = static_cast<double>(m_wd) / 2.0 - 0.5;
-    double h2  = static_cast<double>(m_hd) / 2.0 - 0.5;
-    double ws2 = static_cast<double>(m_ws) / 2.0 - 0.5;
-    double hs2 = static_cast<double>(m_hs) / 2.0 - 0.5;
+    double w2  = static_cast<double>(m_wd2) - 0.5;
+    double h2  = static_cast<double>(m_hd2) - 0.5;
+    double ws2 = static_cast<double>(m_ws2) - 0.5;
+    double hs2 = static_cast<double>(m_hs2) - 0.5;
 
     for (int y = 0; y < m_hd; ++y)
     {
@@ -150,11 +153,11 @@ FisheyeStitcher::createMask()
                     ((m_ws * (MAX_FOVD - m_inner_fovd) / MAX_FOVD) / 2.0f)));
 
     // Create Circular mask to crop the input W.R.T. FOVD
-    int r1 = static_cast<int>(std::floor((double(m_ws) / 2.0)));
-    int r2 = static_cast<int>(std::floor((double(m_ws) / 2.0 - wShift * 2.0)));
-    cv::circle(cir_mask_,       cv::Point(int(m_hs / 2), int(m_ws / 2)), r1, 
+    int r1 = m_ws2;
+    int r2 = m_ws2 - wShift * 2;
+    cv::circle(cir_mask_,       cv::Point(m_ws2, m_ws2), r1, 
                cv::Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
-    cv::circle(inner_cir_mask_, cv::Point(int(m_hs / 2), int(m_ws / 2)), r2, 
+    cv::circle(inner_cir_mask_, cv::Point(m_ws2, m_ws2), r2, 
                cv::Scalar(255, 255, 255), -1, 8, 0); // fill circle with 0xFF
 
     cv::Mat cir_mask;
@@ -176,7 +179,7 @@ FisheyeStitcher::deform( const cv::Mat &src )
 {
     cv::Mat dst(src.size(), src.type());
     cv::remap(src, dst, m_mls_map_x, m_mls_map_y, CV_INTER_LINEAR, 
-          cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
+              cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     return dst;
 
 }   // deform() 
@@ -197,8 +200,8 @@ FisheyeStitcher::genScaleMap()
     //------------------------------------------------------------------------//
     int H = m_hs;
     int W = m_ws;
-    int W_ = std::floor(m_ws / 2);
-    int H_ = std::floor(m_hs / 2);
+    int W_ = m_ws2;
+    int H_ = m_hs2;
     cv::Mat x_coor = cv::Mat::zeros(1, W_, CV_32F);
     cv::Mat temp(x_coor.size(), x_coor.type());
 
@@ -314,9 +317,9 @@ FisheyeStitcher::createBlendMask()
     cv::Mat inner_cir_mask_n;
     cv::Mat ring_mask, ring_mask_unwarped;
 
-    int Ws2 = static_cast<int>(m_ws / 2);
-    int Hs2 = static_cast<int>(m_hs / 2);
-    int Wd2 = static_cast<int>(m_wd / 2);
+    int Ws2 = m_ws2;
+    int Hs2 = m_hs2;
+    int Wd2 = m_wd2;
     cv::bitwise_not(m_inner_cir_mask, inner_cir_mask_n);
 
     m_cir_mask.copyTo(ring_mask, inner_cir_mask_n); // masking
@@ -571,6 +574,7 @@ FisheyeStitcher::blendRight( const cv::Mat &bg1, const cv::Mat &bg2 )
 {
     int h = bg1.size().height;
     int w = bg1.size().width;
+    double wdb = static_cast<double>(w);
     cv::Mat bg_ = cv::Mat::zeros(bg1.size(), CV_32F);
     double alpha1, alpha2;
     cv::Mat bg1_, bg2_;
@@ -589,7 +593,7 @@ FisheyeStitcher::blendRight( const cv::Mat &bg1, const cv::Mat &bg2 )
     {
         for (int c = 0; c < w; ++c)
         {
-            alpha1 = double(c) / double(w);
+            alpha1 = static_cast<double>(c) / wdb;
             alpha2 = 1.0 - alpha1;
             bgr_bg[0].at<float>(r, c) = alpha1*bgr_bg1[0].at<float>(r, c) + 
                                             alpha2*bgr_bg2[0].at<float>(r, c);
@@ -617,6 +621,7 @@ FisheyeStitcher::blendLeft( const cv::Mat &bg1, const cv::Mat &bg2 )
 {
     int h = bg1.size().height;
     int w = bg1.size().width;
+    double wdb = static_cast<double>(w);
     cv::Mat bg_ = cv::Mat::zeros(bg1.size(), CV_32F);
     double alpha1, alpha2;
     cv::Mat bg1_, bg2_;
@@ -635,7 +640,7 @@ FisheyeStitcher::blendLeft( const cv::Mat &bg1, const cv::Mat &bg2 )
     {
         for (int c = 0; c < w; ++c)
         {
-            alpha1 = (double(w) - c + 1) / double(w);
+            alpha1 = (wdb - c + 1) / wdb;
             alpha2 = 1.0 - alpha1;
             bgr_bg[0].at<float>(r, c) = alpha1*bgr_bg1[0].at<float>(r, c) + 
                                             alpha2*bgr_bg2[0].at<float>(r, c);
@@ -770,7 +775,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     double tickStart, tickEnd, runTime;
 
 #if PROFILING
-    tickStart = double(cv::getTickCount());
+    tickStart = static_cast<double>(cv::getTickCount());
 #endif
 
     //------------------------------------------------------------------------//
@@ -780,7 +785,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     cv::bitwise_and(in_img_R, m_cir_mask, in_img_R); // Right image
 
 #if PROFILING
-    tickEnd = double(cv::getTickCount());
+    tickEnd = static_cast<double>(cv::getTickCount());
     runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (Crop) = " << runTime << " (sec)" << "\n";
@@ -803,7 +808,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     }
 
 #if PROFILING
-    tickEnd = double(cv::getTickCount());
+    tickEnd = static_cast<double>(cv::getTickCount());
     runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (LightCompen) = " << runTime << " (sec)" << "\n";
@@ -816,7 +821,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     right_unwarped = unwarp(right_img_compensated);
 
 #if PROFILING
-    tickEnd = double(cv::getTickCount());
+    tickEnd = static_cast<double>(cv::getTickCount());
     runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (Unwarp) = " << runTime << " (sec)" << "\n";
@@ -828,7 +833,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
 #endif
 
 #if PROFILING
-    tickStart = double(cv::getTickCount());
+    tickStart = static_cast<double>(cv::getTickCount());
 #endif
 
     //------------------------------------------------------------------------//
@@ -845,7 +850,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
 #endif
 
 #if PROFILING
-    tickEnd = double(cv::getTickCount());
+    tickEnd = static_cast<double>(cv::getTickCount());
     runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (MLS Deform) = " << runTime << " (sec)" << "\n";
@@ -897,7 +902,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     std::string wname2 = "Matching On Right Boundary";
 
 #if PROFILING
-    tickStart = double(cv::getTickCount());
+    tickStart = static_cast<double>(cv::getTickCount());
 #endif
 
     cv::Mat warpedRightImg;
@@ -932,7 +937,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
                                 p_wid, p_x1, p_x2, p_x2_ref);
 
 #if PROFILING
-        tickEnd = double(cv::getTickCount());
+        tickEnd = static_cast<double>(cv::getTickCount());
         runTime = (tickEnd - tickStart) / cv::getTickFrequency();
         tickStart = tickEnd;
         std::cout << "run-time (Xcorr & fitGeoTrans) = " << runTime << " (sec)" << "\n";
@@ -952,7 +957,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
                             CV_INTER_LINEAR);
 
 #if PROFILING
-        tickEnd = double(cv::getTickCount());
+        tickEnd = static_cast<double>(cv::getTickCount());
         runTime = (tickEnd - tickStart) / cv::getTickFrequency();
         tickStart = tickEnd;
         std::cout << "run-time (estimate tform_mat & warping) = " << runTime << " (sec)" << "\n";
@@ -967,7 +972,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
     pano = blend(left_unwarped_arr, warpedRightImg);
 
 #if PROFILING
-    tickEnd = double(cv::getTickCount());
+    tickEnd = static_cast<double>(cv::getTickCount());
     runTime = (tickEnd - tickStart) / cv::getTickFrequency();
     tickStart = tickEnd;
     std::cout << "run-time (Blending) = " << runTime << " (sec)" << "\n";

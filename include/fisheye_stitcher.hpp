@@ -74,11 +74,14 @@ private:
     // Parameters
     int m_hs_org; // height of the input image (2xfisheyes), e.g. 1920
     int m_ws_org; // width of the input image (2xfisheyes), e.g. 3840
-    int m_hs;     // height of one fisheye image, e.g. 1920
     int m_ws;     // width of one fisheye image, e.g. 1920
+    int m_hs;     // height of one fisheye image, e.g. 1920
+    int m_ws2;    // m_ws / 2 
+    int m_hs2;    // m_hs / 2
     int m_hd;     // height of destination pano image
     int m_wd;     // width of destination pano image
-    int m_wd2;    // m_wd / 2.0
+    int m_wd2;    // m_wd / 2
+    int m_hd2;    // m_hd / 2 
     float m_in_fovd;
     float m_inner_fovd; // used in creating mask
     bool m_enb_light_compen;
