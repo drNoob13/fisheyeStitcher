@@ -3,11 +3,11 @@ cmake_minimum_required(VERSION 3.5.1)
 project( fisheyeStitcher )
 
 include(CheckCXXCompilerFlag) 
-CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-if(COMPILER_SUPPORTS_CXX11)
-    add_compile_options(-std=c++11 -O3)
+CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
+if(COMPILER_SUPPORTS_CXX17)
+    add_compile_options(-std=c++17 -O3)
 else()
-    message(FATAL_ERROR "ERROR: The compiler ${CMAKE_CXX_COMPILER} has no C++11 
+    message(FATAL_ERROR "ERROR: The compiler ${CMAKE_CXX_COMPILER} has no C++17 
                          support. Please use a different C++ compiler.")
 endif()
 

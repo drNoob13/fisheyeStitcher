@@ -11,32 +11,44 @@
 int
 main(int argc, char **argv)
 {
+    using ffstitcher::Options;
+    using std::string;
+
     // Parse input 
     ffstitcher::InputParser Parser(argc, argv);
 
+    string video_path   = std::get<string>(Parser.get(Options::OPT_VIDEO_PATH      ));
+    string out_dir      = std::get<string>(Parser.get(Options::OPT_OUTPUT_DIR      ));
+    string image_name   = std::get<string>(Parser.get(Options::OPT_IMAGE_NAME      ));
+    string mls_map_path = std::get<string>(Parser.get(Options::OPT_MLSMAP_PATH     ));
+    bool   enb_lc       = std::get<bool  >(Parser.get(Options::OPT_ENB_LIGHT_COMPEN));
+    bool   enb_ra       = std::get<bool  >(Parser.get(Options::OPT_ENB_REFINE_ALIGN));
+
     // Video input 
-    cv::VideoCapture VCap( Parser.getVideoPath() );
+    cv::VideoCapture VCap( video_path );
     if( !VCap.isOpened() )
     {
         CV_Error_(cv::Error::StsBadArg, ("Error opening video: %s",
-                    Parser.getVideoPath().c_str()));
+                    video_path.c_str()));
     } 
 
     // Video output 
-    int    frame_fps      = VCap.get(CV_CAP_PROP_FPS);
-    int    frame_width    = VCap.get(CV_CAP_PROP_FRAME_WIDTH);
-    int    frame_height   = VCap.get(CV_CAP_PROP_FRAME_HEIGHT);
+    int frame_fps    = VCap.get(CV_CAP_PROP_FPS);
+    int frame_width  = VCap.get(CV_CAP_PROP_FRAME_WIDTH);
+    int frame_height = VCap.get(CV_CAP_PROP_FRAME_HEIGHT);
 
     CV_Assert( (frame_width % 2 == 0) && (frame_height % 2 == 0) );
 
-    std::string video_out_name = Parser.getOutDir() + "/" + 
-                        Parser.getImageName() + "_blend_video.avi";
+    string video_out_name = out_dir + "/" + image_name 
+                                    + "_blend_video.avi";
 
     int Wd = static_cast<int>(frame_width / 2 * 360.0 / MAX_FOVD);
     int Hd = static_cast<int>(Wd / 2);
     Hd = Hd - (Hd % 10); // trim exceesive pixel lines
+
+    // Initialize an H264 encoder
     cv::VideoWriter VOut;
-    VOut.open( video_out_name, cv::VideoWriter::fourcc('X','2','6','4'), // OpenCV 4.1.0
+    VOut.open( video_out_name, cv::VideoWriter::fourcc('X','2','6','4'),
                frame_fps, cv::Size(Wd, Hd) );
     if( !VOut.isOpened() )
     {
@@ -44,14 +56,14 @@ main(int argc, char **argv)
                   ("Error opening video: %s", video_out_name.c_str()));
     } 
 
-    // Create a stitcher
+    // Initialize our stitcher
     stitcher::FisheyeStitcher Stitcher(
         frame_width, 
         frame_height,
         195.0f,
-        Parser.getFlagLightCompen(),
-        Parser.getFlagRefineAlign(),
-        Parser.getMLSMapPath()
+        enb_lc,
+        enb_ra,
+        mls_map_path
     );
 
     // Main video loop
@@ -76,12 +88,15 @@ main(int argc, char **argv)
         }
  
         cv::Mat img_l, img_r;
-        img_l = img(cv::Rect(0,  0, int(img.size().width / 2), 
-                    frame_height)); // left fisheye
-        img_r = img(cv::Rect(int(img.size().width / 2), 0, 
-                    int(img.size().width / 2), frame_height)); // right fisheye 
+        // Left fisheye
+        img_l = img(cv::Rect(0, 0, 
+                    static_cast<int>(img.size().width / 2), frame_height));
+        // Right fisheye
+        img_r = img(cv::Rect(static_cast<int>(img.size().width / 2), 0,
+                    static_cast<int>(img.size().width / 2), frame_height));
 
-        double stitch_start = static_cast<double>(cv::getTickCount()); // frame stitching starts
+        // Starts timer
+        double stitch_start = static_cast<double>(cv::getTickCount());
 
         // Stitch video frames
         cv::Mat pano;
@@ -98,6 +113,7 @@ main(int argc, char **argv)
 #if PROFILING
         double tickStart = endTime; // previous count
 #endif 
+        // Encoding
         VOut << pano;
 
 #if PROFILING
@@ -118,8 +134,9 @@ main(int argc, char **argv)
     VOut.release();
 
     std::cout << "Done! Writing to video [" << Wd << "x" << Hd << "] @" 
-         << frame_fps << "fps  --> " << video_out_name << "\n";
+              << frame_fps << "fps  --> " << video_out_name << "\n";
 
+    // Timer printout
     std::cout << "Total time = " << totalTime / 60 << " min" 
               << " (" << totalTime << " sec)\n";
     std::cout << "Total stitching time = " << total_stitch_time / 60 << " min" 

@@ -1,20 +1,35 @@
-/**
- * Tuan Ho
- * Function: Input parser 
- * 
-*/
+//----------------------------------------------------------------------------//
+//                                                                            //
+// This file is part of the fisheye stitcher project.                         //
+// Copyright (c) 2018-2020 Tuan Phan Minh Ho <drnoob2013@gmail.com>           //
+// https://github.com/drNoob13/fisheyeStitcher                                //
+//                                                                            //
+//----------------------------------------------------------------------------//
 #ifndef INPUT_PARSER_HPP
 #define INPUT_PARSER_HPP
 
 #include <iostream>
 #include <opencv2/core/core.hpp>
+#include <variant>    // std::variant
 
 namespace ffstitcher 
 {
+enum class Options { 
+    OPT_IMAGE_PATH       = 0,
+    OPT_IMAGE_NAME       = 1,
+    OPT_OUTPUT_DIR       = 2,
+    OPT_VIDEO_PATH       = 3,
+    OPT_MLSMAP_PATH      = 4,
+    OPT_MODE             = 5,
+    OPT_IMAGE_SIZE       = 6,
+    OPT_ENB_LIGHT_COMPEN = 7,
+    OPT_ENB_REFINE_ALIGN = 8
+};
 
 class InputParser
 {
-public:
+public: 
+
     InputParser(int argc, char **argv) 
       : m_img_path(std::string("nofile")), m_out_dir(std::string(" ")),
         m_enb_lc(false), m_enb_ra(false),
@@ -154,24 +169,27 @@ public:
            << "\n";
     }
 
-    std::string   getImagePath()         const { return m_img_path;            }
-    std::string   getImageName()         const { return m_img_nm;              }
-    std::string   getOutDir()            const { return m_out_dir;             }
-    std::string   getVideoPath()         const { return m_video_path;          }
-    std::string   getMLSMapPath()        const { return m_mls_map_path;        }
-    std::string   getMode()              const { return m_mode;                }     
-    cv::Size      getImageSize()         const { return cv::Size(m_image_width,
-                                                           m_image_height);    }
-    bool          getFlagLightCompen()   const { return m_enb_lc;    }                                                       
-    bool          getFlagRefineAlign()   const { return m_enb_ra;    }
-
+    // A getter function that returns data type for each input type
+    std::variant<bool, std::string> get(Options Opt) 
+    {
+        switch(Opt)
+        {
+        case Options::OPT_IMAGE_PATH       : return m_img_path;
+        case Options::OPT_IMAGE_NAME       : return m_img_nm;
+        case Options::OPT_OUTPUT_DIR       : return m_out_dir;
+        case Options::OPT_VIDEO_PATH       : return m_video_path;
+        case Options::OPT_MLSMAP_PATH      : return m_mls_map_path;
+        case Options::OPT_MODE             : return m_mode;
+        case Options::OPT_ENB_LIGHT_COMPEN : return m_enb_lc;
+        case Options::OPT_ENB_REFINE_ALIGN : return m_enb_ra;
+        default: ;
+        }
+    }
 
 private:
     bool          m_use_store_map;
     bool          m_enb_lc;  // enb light compen (0: off)
     bool          m_enb_ra;  // enb refine alignment (0: off)
-    int           m_image_width;
-    int           m_image_height;
     std::string   m_img_nm;
     std::string   m_out_dir;
     std::string   m_img_path;

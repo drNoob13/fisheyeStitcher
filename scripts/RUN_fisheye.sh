@@ -29,8 +29,8 @@ fi
 
 ########################################################################################################3
 
-image_width=3840   # dual-fisheye image
-image_height=1920  # dual-fisheye image
+# image_width=3840   # dual-fisheye image - use video frame size instead
+# image_height=1920  # dual-fisheye image
 in_dir='../input'
 video_path='../input/input_video.mp4'
 mls_map_path='../utils/grid_xd_yd_3840x1920.yml.gz'
@@ -50,8 +50,6 @@ echo ""
 
 ${BUILD_DIR}/bin/${BINARY}          \
    --out_dir         $out_dir       \
-   --image_width     $image_width   \
-   --image_height    $image_height  \
    --img_nm          $img_nm        \
    --video_path      $video_path    \
    --mls_map_path    $mls_map_path  \
