@@ -25,7 +25,7 @@ if(COMPILER_SUPPORTS_CXX17)
     set(CMAKE_CXX_COMPILER  "/usr/bin/g++-7")  # new
 ```
 * CMake 3.5.1.
-* OpenCV 3.4.2 (with calib3d).
+* OpenCV 3.4.2 (with calib3d) or more recent version of OpenCV.
 
 ### Build
 
