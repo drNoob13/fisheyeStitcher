@@ -5,6 +5,7 @@ project( fisheyeStitcher )
 include(CheckCXXCompilerFlag) 
 CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
 if(COMPILER_SUPPORTS_CXX17)
+    # set(CMAKE_CXX_COMPILER  "/usr/bin/g++-7") # only if necessary
     add_compile_options(-std=c++17 -O3)
 else()
     message(FATAL_ERROR "ERROR: The compiler ${CMAKE_CXX_COMPILER} has no C++17 
