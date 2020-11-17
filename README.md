@@ -22,7 +22,7 @@ The code is built and tested in Ubuntu 16.04 and Ubuntu 18.04.
 * C++17-support compiler. If your compiler doesn't fully support C++17, you can force g++7 (Linux) by adding the following line in CMakeList.txt:
 ```
 if(COMPILER_SUPPORTS_CXX17)
-    set(CMAKE_CXX_COMPILER  "/usr/bin/g++-7")  # new
+    set(CMAKE_CXX_COMPILER  "/usr/bin/g++-7")  # only if necessary (Ubuntu 16.04 or older)
 ```
 * CMake 3.5.1.
 * OpenCV 3.4.2 (with calib3d) or more recent version of OpenCV.
