@@ -49,6 +49,21 @@ if(COMPILER_SUPPORTS_CXX17)
 
 Please be informed that the code doesn't include the temporal coherence control, but one can implement it using the description in [1].
 
+### Youtube 360-Video
+
+The output video can be uploaded to youtube as 360 degree view.
+Spatial media metadata needs to be added to the output file ([more..](https://support.google.com/youtube/answer/6178631?hl=en
+))
+
+* Tool: [Google Spatial media metadata tool](https://github.com/google/spatial-media.git)
+
+Usage:
+```
+python spatialmedia -i stitched_pano_360_0546_SRA.mp4 stitched_pano_360_0546_SRA_youtube.mp4
+```
+* [360 Video on Youtube](https://www.youtube.com/embed/Il7_1649HcQ?autoplay=1&loop=1&playlist=Il7_1649HcQ)
+
+
 
 ## Performance
 
