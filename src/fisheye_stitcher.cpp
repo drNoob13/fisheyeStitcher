@@ -178,7 +178,7 @@ cv::Mat
 FisheyeStitcher::deform( const cv::Mat &src )
 {
     cv::Mat dst(src.size(), src.type());
-    cv::remap(src, dst, m_mls_map_x, m_mls_map_y, CV_INTER_LINEAR, 
+    cv::remap(src, dst, m_mls_map_x, m_mls_map_y, cv::INTER_LINEAR, 
               cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     return dst;
 
@@ -331,7 +331,7 @@ FisheyeStitcher::createBlendMask()
     cv::imwrite("ring_mask.jpg", ring_mask);
 #endif
     
-    cv::remap(ring_mask, ring_mask_unwarped, m_map_x, m_map_y, CV_INTER_LINEAR,
+    cv::remap(ring_mask, ring_mask_unwarped, m_map_x, m_map_y, cv::INTER_LINEAR,
               cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     
     cv::Mat mask_ = ring_mask_unwarped(cv::Rect(Wd2-Ws2, 0, m_ws, m_hd)); 
@@ -477,7 +477,7 @@ FisheyeStitcher::findMatchLoc( const cv::Mat &Ref,
     result.create(result_rows, result_cols, CV_32FC1);
 
     // Select Normalized Cross-Correlation as Template Matching Method
-    int match_method = CV_TM_CCORR_NORMED;
+    int match_method = cv::TM_CCORR_NORMED;
 
     // Match template
     cv::matchTemplate(img, templ, result, match_method);
@@ -954,7 +954,7 @@ FisheyeStitcher::stitch(const cv::Mat& in_img_L, const cv::Mat& in_img_R)
         //--------------------------------------------------------------------//
         cv::warpPerspective(rightImg_mls_deformed, warpedRightImg, 
                             tform_refine_mat, rightImg_mls_deformed.size(), 
-                            CV_INTER_LINEAR);
+                            cv::INTER_LINEAR);
 
 #if PROFILING
         tickEnd = static_cast<double>(cv::getTickCount());
