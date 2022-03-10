@@ -33,9 +33,9 @@ main(int argc, char **argv)
     } 
 
     // Video output 
-    int frame_fps    = VCap.get(CV_CAP_PROP_FPS);
-    int frame_width  = VCap.get(CV_CAP_PROP_FRAME_WIDTH);
-    int frame_height = VCap.get(CV_CAP_PROP_FRAME_HEIGHT);
+    int frame_fps    = VCap.get(cv::CAP_PROP_FPS);
+    int frame_width  = VCap.get(cv::CAP_PROP_FRAME_WIDTH);
+    int frame_height = VCap.get(cv::CAP_PROP_FRAME_HEIGHT);
 
     CV_Assert( (frame_width % 2 == 0) && (frame_height % 2 == 0) );
 
